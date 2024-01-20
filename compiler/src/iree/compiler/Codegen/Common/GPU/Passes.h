@@ -78,6 +78,8 @@ std::unique_ptr<OperationPass<ModuleOp>> createGPUCheckResourceUsagePass(
 /// Creates a pass to distribute scf.forall ops to GPU processors.
 std::unique_ptr<OperationPass<func::FuncOp>> createGPUDistribute();
 
+std::unique_ptr<OperationPass<func::FuncOp>> createGPUBufferInferAddressSpace();
+
 /// Convert GPU shared memory copies to distributed
 /// transfer_read/transfer_write.
 std::unique_ptr<OperationPass<func::FuncOp>>

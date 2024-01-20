@@ -26,6 +26,7 @@
 #include "mlir/Dialect/GPU/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
@@ -46,12 +47,11 @@ static FailureOr<Value> gpuAllocationFn(OpBuilder &builder, Location loc,
                                         MemRefType memRefType,
                                         ValueRange dynamicSizes,
                                         unsigned alignment) {
-  auto workgroupSpace = gpu::AddressSpaceAttr::get(
-      builder.getContext(), gpu::GPUDialect::getWorkgroupAddressSpace());
-  MemRefType allocType =
-      MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
-                      AffineMap(), workgroupSpace);
-  return builder.create<memref::AllocOp>(loc, allocType, dynamicSizes)
+  if (llvm::isa_and_nonnull<IREE::HAL::DescriptorTypeAttr>(
+          memRefType.getMemorySpace()))
+    memRefType = MemRefType::get(memRefType.getShape(),
+                                 memRefType.getElementType(), AffineMap());
+  return builder.create<memref::AllocOp>(loc, memRefType, dynamicSizes)
       .getResult();
 }
 

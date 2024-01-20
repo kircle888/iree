@@ -244,6 +244,7 @@ void addIREEPostBufferizationPasses(OpPassManager &passManager) {
   // memrefs are unified in CSE pass, so we can truely remove redundant memcpy.
   passManager.addNestedPass<func::FuncOp>(createCanonicalizerPass());
   passManager.addNestedPass<func::FuncOp>(createCleanupBufferAllocViewPass());
+  passManager.addNestedPass<func::FuncOp>(createGPUBufferInferAddressSpace());
 }
 
 void addIREEComprehensiveBufferizePasses(

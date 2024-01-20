@@ -25,6 +25,12 @@ def GPUDistribute :
   let constructor = "mlir::iree_compiler::createGPUDistribute()";
 }
 
+def GPUBufferInferAddressSpace :
+    Pass<"iree-codegen-gpu-buffer-infer-addressspace", "func::FuncOp"> {
+  let summary = "Pass pack shared memory allocation in order to reduce memory usage.";
+  let constructor = "mlir::iree_compiler::createGPUBufferInferAddressSpace()";
+}
+
 def GPUDistributeSharedMemoryCopy :
     Pass<"iree-codegen-gpu-distribute-shared-memory-copy", "func::FuncOp"> {
   let summary = "Pass to distribute shared memory copies to threads.";
