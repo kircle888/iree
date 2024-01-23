@@ -78,6 +78,7 @@ static void addBufferizePasses(OpPassManager &passManager) {
   BufferizationOptions::AllocationFn allocationFn = gpuAllocationFn;
   BufferizationOptions::MemCpyFn memcpyFn = gpuCopyFn;
   addIREEComprehensiveBufferizePasses(passManager, allocationFn, memcpyFn);
+  passManager.addNestedPass<func::FuncOp>(createGPUBufferInferAddressSpace());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 }
