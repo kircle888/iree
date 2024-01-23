@@ -15,11 +15,16 @@
 #include "iree/compiler/Codegen/Utils/GPUUtils.h"
 #include "iree/compiler/Codegen/Utils/MarkerUtils.h"
 #include "iree/compiler/Dialect/Util/Transforms/Passes.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
+#include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/VectorToGPU/VectorToGPU.h"
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
+#include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Func/Transforms/Passes.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -46,11 +51,27 @@ static FailureOr<Value> gpuAllocationFn(OpBuilder &builder, Location loc,
                                         MemRefType memRefType,
                                         ValueRange dynamicSizes,
                                         unsigned alignment) {
-  auto workgroupSpace = gpu::AddressSpaceAttr::get(
-      builder.getContext(), gpu::GPUDialect::getWorkgroupAddressSpace());
+  llvm::outs() << memRefType << "\n";
+  auto memorySpace = memRefType.getMemorySpace();
+  //   memorySpace = gpu::AddressSpaceAttr::get(
+  //       builder.getContext(), gpu::GPUDialect::getWorkgroupAddressSpace());
+  if (llvm::isa_and_nonnull<IREE::HAL::DescriptorTypeAttr>(memorySpace))
+    memorySpace = gpu::AddressSpaceAttr::get(
+        builder.getContext(), gpu::GPUDialect::getPrivateAddressSpace());
+  else if (!memorySpace) {
+    if (memRefType.hasStaticShape() && memRefType.getRank() == 0)
+      memorySpace = gpu::AddressSpaceAttr::get(
+          builder.getContext(), gpu::GPUDialect::getWorkgroupAddressSpace());
+    else {
+      memorySpace = gpu::AddressSpaceAttr::get(
+          builder.getContext(), gpu::GPUDialect::getWorkgroupAddressSpace());
+    }
+    // memorySpace = gpu::AddressSpaceAttr::get(builder.getContext(),
+    //                                          gpu::AddressSpace::Global);
+  }
   MemRefType allocType =
       MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
-                      AffineMap(), workgroupSpace);
+                      AffineMap(), memorySpace);
   return builder.create<memref::AllocOp>(loc, allocType, dynamicSizes)
       .getResult();
 }
@@ -514,7 +535,8 @@ static void addLowerAndOptimzeAddressComputation(OpPassManager &pm) {
   pm.addPass(createLowerAffinePass());
 }
 
-static void addLowerToLLVMGPUPasses(OpPassManager &pm, bool useROCM) {
+static void addLowerToLLVMGPUPasses(OpPassManager &pm, bool useROCM,
+                                    bool emitCuda = true) {
   pm.addPass(createConvertHALDescriptorTypeToGPUAddressSpacePass());
 
   pm.addPass(createCanonicalizerPass());
@@ -555,6 +577,24 @@ static void addLowerToLLVMGPUPasses(OpPassManager &pm, bool useROCM) {
   auto getIndexBitwidth = [](func::FuncOp) { return 64; };
   pm.addPass(
       createGPUCheckResourceUsagePass(getSharedMemoryLimit, getIndexBitwidth));
+  if (emitCuda) {
+    pm.addPass(createConvertComplexToStandardPass());
+    pm.addPass(createConvertBf16ArithToF32Pass());
+    pm.addPass(createConvertBf16ToUInt16BuffersPass());
+    pm.addNestedPass<func::FuncOp>(arith::createArithExpandOpsPass());
+    pm.addNestedPass<func::FuncOp>(createPolynomialApproximationPass());
+    pm.addNestedPass<func::FuncOp>(memref::createExpandOpsPass());
+    pm.addPass(memref::createFoldMemRefAliasOpsPass());
+    pm.addPass(memref::createExpandStridedMetadataPass());
+    pm.addPass(createEmulateNarrowTypePass());
+    pm.addPass(createLowerAffinePass());
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
+    pm.addPass(createStripDebugInfoPass());
+    pm.addPass(createLLVMGPUCastAddressSpaceFunction());
+    pm.addPass(createConvertToCUDAPass());
+    return;
+  }
 
   // SCF -> STD
   pm.addNestedPass<func::FuncOp>(createConvertSCFToCFPass());

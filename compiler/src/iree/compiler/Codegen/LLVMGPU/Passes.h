@@ -63,6 +63,8 @@ void buildLLVMGPUCodegenConfigurationPassPipeline(OpPassManager &pm);
 /// the module within the IREE::HAL::ExecutableOp.
 void buildLLVMGPUCodegenPassPipeline(OpPassManager &pm, bool useROCM);
 
+std::unique_ptr<OperationPass<ModuleOp>> createConvertToCUDAPass();
+
 /// Performs the final conversion to NNVM+LLVM dialect.
 std::unique_ptr<OperationPass<ModuleOp>> createConvertToNVVMPass();
 

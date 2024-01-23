@@ -378,6 +378,7 @@ if(NOT IREE_CUDA_AVAILABLE)
 endif()
 cmake_dependent_option(IREE_TARGET_BACKEND_CUDA "Enables the 'cuda' compiler target backend" ${IREE_TARGET_BACKEND_CUDA_DEFAULT} ${IREE_BUILD_COMPILER} OFF)
 
+cmake_dependent_option(IREE_TARGET_BACKEDN_COREX "Enable the 'corex' compiler target backend" OFF ${IREE_BUILD_COMPILER} OFF)
 # Non-default target backends either have additional dependencies or are
 # experimental/niche in some fashion.
 # Disable WebGPU by default - it has complex deps and is under development.
@@ -588,6 +589,22 @@ iree_register_external_hal_driver(
     iree::experimental::cuda2::registration
   REGISTER_FN
     iree_hal_cuda2_driver_module_register
+)
+
+#-------------------------------------------------------------------------------
+# Experimental next-generation COREX driver
+# Enable with: -DIREE_EXTERNAL_HAL_DRIVERS=corex
+#-------------------------------------------------------------------------------
+
+iree_register_external_hal_driver(
+  NAME
+    corex
+  SOURCE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/experimental/corex"
+  DRIVER_TARGET
+    iree::experimental::corex::registration
+  REGISTER_FN
+    iree_hal_corex_driver_module_register
 )
 
 #-------------------------------------------------------------------------------
@@ -827,7 +844,7 @@ set(IREE_CUDA_LIBDEVICE_PATH "" CACHE FILEPATH "Absolute path to an appropriate 
 
 # If any CUDA features are being built, try to locate a CUDA SDK. We will fall
 # back to this as needed for specific features.
-if(IREE_TARGET_BACKEND_CUDA OR IREE_HAL_DRIVER_CUDA)
+if(IREE_TARGET_BACKEND_COREX OR IREE_IREE_TARGET_BACKEND_CUDA OR IREE_HAL_DRIVER_CUDA)
   add_subdirectory(build_tools/third_party/cuda EXCLUDE_FROM_ALL)
 endif()
 
@@ -919,7 +936,7 @@ endif()
 # This defines the iree-flatcc-cli target, so we don't use EXCLUDE_FROM_ALL.
 add_subdirectory(build_tools/third_party/flatcc)
 
-if(IREE_HAL_DRIVER_CUDA)
+if(IREE_HAL_DRIVER_CUDA OR IREE_IMPORT_NCCL)
   add_subdirectory(build_tools/third_party/nccl EXCLUDE_FROM_ALL)
 endif()
 

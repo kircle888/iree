@@ -8,9 +8,11 @@
 #include "iree/compiler/Codegen/Common/GPU/Passes.h"
 #include "iree/compiler/Codegen/Utils/GPUUtils.h"
 #include "iree/compiler/Codegen/Utils/LinalgOpInfo.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -182,6 +184,13 @@ public:
           }
           Value v = ret.value();
           operand->set(v);
+          if (auto aop = llvm::dyn_cast<bufferization::AllocTensorOp>(
+                  v.getDefiningOp())) {
+            auto workgroupSpace = gpu::AddressSpaceAttr::get(
+                builder.getContext(),
+                gpu::GPUDialect::getWorkgroupAddressSpace());
+            aop.setMemorySpaceAttr(workgroupSpace);
+          }
         }
         break;
 
@@ -196,6 +205,13 @@ public:
           }
           Value v = ret.value();
           operand->set(v);
+          if (auto aop = llvm::dyn_cast<bufferization::AllocTensorOp>(
+                  v.getDefiningOp())) {
+            auto workgroupSpace = gpu::AddressSpaceAttr::get(
+                builder.getContext(),
+                gpu::GPUDialect::getWorkgroupAddressSpace());
+            aop.setMemorySpaceAttr(workgroupSpace);
+          }
         }
         break;
       }

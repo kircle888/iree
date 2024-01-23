@@ -13,6 +13,12 @@ include "mlir/Pass/PassBase.td"
 // LLVMGPU Passes (keep alphabetical)
 //------------------------------------------------------------------------------
 
+def ConvertToCUDA :
+    Pass<"iree-convert-to-cuda", "ModuleOp"> {
+  let summary = "Perform conversion from builtin/GPU/HAL/Arith/Vector dialect to CUDA";
+  let constructor = "mlir::iree_compiler::createConvertToCUDAPass()";
+}
+
 // TODO: Bring the argument in line with the names used elsewhere.
 def ConvertToNVVM :
     Pass<"iree-convert-to-nvvm", "ModuleOp"> {

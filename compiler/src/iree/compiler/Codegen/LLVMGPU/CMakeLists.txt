@@ -47,6 +47,7 @@ iree_cc_library(
     "KernelConfig.h"
     "Passes.h"
   SRCS
+    "ConvertToCUDA.cpp"
     "ConvertToLLVM.cpp"
     "ConvertToNVVM.cpp"
     "ConvertToROCDL.cpp"
