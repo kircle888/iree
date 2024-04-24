@@ -15,6 +15,8 @@
 #include "iree/compiler/Utils/ToolUtils.h"
 #include "iree/schemas/cuda_executable_def_builder.h"
 #include "iree_cuda/libdevice_embedded.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -166,7 +168,7 @@ struct CudaEmitter {
                                           ArrayRef<StringRef> exclude = {});
 
   LogicalResult emitMemrefAccess(Location loc, Value base, ValueRange indices,
-                                 long offset = 0l);
+                                 const std::string &offset = "0");
 
   LogicalResult emitInitializeOps();
   void pushInitializeOps(Operation *op);
@@ -268,7 +270,9 @@ static bool isMemrefStruct(LLVM::LLVMStructType sType) {
   return true;
 }
 
-static void printInt(CudaEmitter &emitter, const APInt &val, bool isUnsigned) {
+static void printInt(CudaEmitter &emitter, const APInt &val, Type iType) {
+  auto isUnsigned = emitter.shouldMapToUnsigned(iType);
+
   auto &os = emitter.ostream();
   if (val.getBitWidth() == 1) {
     if (val.getBoolValue())
@@ -276,86 +280,111 @@ static void printInt(CudaEmitter &emitter, const APInt &val, bool isUnsigned) {
     else
       os << "false";
   } else {
+    SmallString<8> postfix;
+    if (auto idxType = iType.dyn_cast<IndexType>()) {
+      postfix = "lu";
+    } else if (auto itType = iType.dyn_cast<IntegerType>()) {
+      if (itType.getWidth() == 64) {
+        postfix = "ll";
+      }
+      if (isUnsigned) {
+        postfix += "u";
+      }
+    }
     SmallString<128> strValue;
     val.toString(strValue, 10, !isUnsigned, false);
-    os << strValue;
+    os << strValue << postfix;
   }
 };
-
+static void printTupleAccess(raw_ostream &os, StringRef name,
+                             const std::vector<int64_t> &pos) {
+  for (auto i = pos.rbegin(); i != pos.rend(); i++) {
+    os << "Get<" << *i << ">(";
+  }
+  os << name;
+  for ([[maybe_unused]] auto i : pos) {
+    os << ")";
+  }
+}
+template <typename PrintFunc>
+static LogicalResult printMakeTuple(CudaEmitter &emitter,
+                                    llvm::ArrayRef<int64_t> shape,
+                                    PrintFunc pf) {
+  auto &os = emitter.ostream();
+  std::vector<int64_t> pos(shape.size());
+  auto emitAtDim = [&](auto self, int64_t dim) -> LogicalResult {
+    os << "my_make_tuple(";
+    for (int64_t i = 0; i < shape[dim]; i++) {
+      pos[dim] = i;
+      if (dim == shape.size() - 1) {
+        if (failed(pf(emitter, pos))) {
+          return failure();
+        }
+      } else {
+        if (failed(self(self, dim + 1))) {
+          return failure();
+        }
+      }
+      if (i != shape[dim] - 1) {
+        os << ",";
+      }
+    }
+    os << ")";
+    return success();
+  };
+  return emitAtDim(emitAtDim, 0);
+}
+template <typename Iterator, typename T, typename ValueFunc, typename PrintFunc>
+static LogicalResult printMakeTuple(CudaEmitter &emitter,
+                                    llvm::ArrayRef<int64_t> shape,
+                                    Iterator begin, Iterator end, ValueFunc f,
+                                    const T &init, PrintFunc pf) {
+  auto v = init;
+  return printMakeTuple(
+      emitter, shape,
+      [&v, &begin, &end, &f, &pf](auto &emitter, const std::vector<int64_t> &) {
+        if (begin != end) {
+          v = f(*begin);
+          begin++;
+        }
+        return pf(emitter, v);
+      });
+}
 static LogicalResult printConstantOp(CudaEmitter &emitter, Operation *operation,
                                      Attribute value) {
   OpResult result = operation->getResult(0);
 
-  // Only emit an assignment as the variable was already declared when printing
-  // the FuncOp.
   if (emitter.shouldDeclareVariablesAtTop()) {
-    // Skip the assignment if the emitc.constant has no value.
-    // if (auto oAttr = dyn_cast<emitc::OpaqueAttr>(value)) {
-    //   if (oAttr.getValue().empty())
-    //     return success();
-    // }
-
     if (failed(emitter.emitVariableAssignment(result)))
       return failure();
     return emitter.emitAttribute(operation->getLoc(), value);
   }
 
-  // Emit a variable declaration for an emitc.constant op without value.
-  // if (auto oAttr = dyn_cast<emitc::OpaqueAttr>(value)) {
-  //   if (oAttr.getValue().empty())
-  //     // The semicolon gets printed by the emitOperation function.
-  //     return emitter.emitVariableDeclaration(result,
-  //                                            /*trailingSemicolon=*/false);
-  // }
-
   if (auto vType = dyn_cast<VectorType>(operation->getResult(0).getType())) {
     if (failed(emitter.emitAssignPrefix(*operation)))
       return failure();
-    auto &os = emitter.ostream();
     auto shape = vType.getShape();
 
     if (auto dense = dyn_cast<DenseFPElementsAttr>(value)) {
-      auto itr = dense.begin();
-      auto emitAtDim = [&itr, &os, &shape](auto self, long dim) -> void {
-        os << "my_make_tuple(";
-        for (long i = 0; i < shape[dim]; i++) {
-          if (dim == shape.size() - 1) {
-            os << (*itr).convertToFloat() << "f";
-            itr++;
-          } else {
-            self(self, dim + 1);
-          }
-          if (i != shape[dim] - 1) {
-            os << ",";
-          }
-        }
-        os << ")";
-      };
-      emitAtDim(emitAtDim, 0);
-      return success();
+      return printMakeTuple(
+          emitter, shape, dense.begin(), dense.end(),
+          [](const APFloat &i) { return i.convertToDouble(); }, 0.0,
+          [](auto &emitter, const double &v) {
+            emitter.ostream() << v;
+            return success();
+          });
     } else if (auto dense = dyn_cast<DenseIntElementsAttr>(value)) {
-      auto itr = dense.begin();
-      auto iType = dense.getElementType().dyn_cast<IntegerType>();
-      auto emitAtDim = [&](auto self, long dim) -> void {
-        os << "my_make_tuple(";
-        for (long i = 0; i < shape[dim]; i++) {
-          if (dim == shape.size() - 1) {
-            printInt(emitter, *itr,
-                     emitter.shouldMapToUnsigned(iType.getSignedness()));
-            itr++;
-          } else {
-            self(self, dim + 1);
-          }
-          if (i != shape[dim] - 1) {
-            os << ",";
-          }
-        }
-        os << ")";
-      };
-      emitAtDim(emitAtDim, 0);
+      auto iType = dense.getElementType();
+      return printMakeTuple(
+          emitter, shape, dense.begin(), dense.end(),
+          [](const APInt &i) { return i; }, APInt::getZero(64),
+          [iType](auto &emitter, const APInt &v) {
+            printInt(emitter, v, iType);
+            return success();
+          });
       return success();
     } else {
-      return emitError(operation->getLoc(), "Unknown Attr to init vector type");
+      return operation->emitOpError("Unknown Attr to init vector type");
     }
   }
 
@@ -598,12 +627,11 @@ LogicalResult CudaEmitter::emitAttribute(Location loc, Attribute attr) {
   // Print integer attributes.
   if (auto iAttr = dyn_cast<IntegerAttr>(attr)) {
     if (auto iType = dyn_cast<IntegerType>(iAttr.getType())) {
-      printInt(*this, iAttr.getValue(),
-               shouldMapToUnsigned(iType.getSignedness()));
+      printInt(*this, iAttr.getValue(), iType);
       return success();
     }
     if (auto iType = dyn_cast<IndexType>(iAttr.getType())) {
-      printInt(*this, iAttr.getValue(), false);
+      printInt(*this, iAttr.getValue(), iType);
       return success();
     }
   }
@@ -611,9 +639,8 @@ LogicalResult CudaEmitter::emitAttribute(Location loc, Attribute attr) {
     if (auto iType = dyn_cast<IntegerType>(
             cast<TensorType>(dense.getType()).getElementType())) {
       os << '{';
-      interleaveComma(dense, os, [&](const APInt &val) {
-        printInt(*this, val, shouldMapToUnsigned(iType.getSignedness()));
-      });
+      interleaveComma(dense, os,
+                      [&](const APInt &val) { printInt(*this, val, iType); });
       os << '}';
       return success();
     }
@@ -621,7 +648,7 @@ LogicalResult CudaEmitter::emitAttribute(Location loc, Attribute attr) {
             cast<TensorType>(dense.getType()).getElementType())) {
       os << '{';
       interleaveComma(dense, os,
-                      [&](const APInt &val) { printInt(*this, val, false); });
+                      [&](const APInt &val) { printInt(*this, val, iType); });
       os << '}';
       return success();
     }
@@ -767,7 +794,8 @@ LogicalResult CudaEmitter::emitLabel(Block &block) {
   return success();
 }
 LogicalResult CudaEmitter::emitMemrefAccess(Location loc, Value base,
-                                            ValueRange indices, long offset) {
+                                            ValueRange indices,
+                                            const std::string &offset) {
   auto type = base.getType().dyn_cast<MemRefType>();
   if (!type) {
     return emitError(loc, "call emitMemrefAccess with non-memref type value");
@@ -1262,12 +1290,34 @@ static LogicalResult printCastOperation(CudaEmitter &emitter,
   os << "(" << emitter.getOrCreateName(operation.getOperand(0)) << ")";
   return success();
 }
+static LogicalResult printVecCastOperation(CudaEmitter &emitter,
+                                           Operation &op) {
+  auto &os = emitter.ostream();
+  auto oType = op.getResult(0).getType();
+  if (auto vType = oType.dyn_cast<VectorType>()) {
+    oType = vType.getElementType();
+  }
+  if (failed(emitter.emitAssignPrefix(op)))
+    return failure();
+  os << "castTo<";
+  if (failed(emitter.emitType(op.getLoc(), oType)))
+    return failure();
+  os << ">(" << emitter.getOrCreateName(op.getOperand(0)) << ")";
+  return success();
+}
 static LogicalResult printOperation(CudaEmitter &emitter,
                                     arith::IndexCastUIOp op) {
-  if (auto mType = op.getIn().getType().dyn_cast<IntegerType>()) {
-    return printCastOperation(emitter, *op.getOperation());
+  if (failed(printVecCastOperation(emitter, *op.getOperation()))) {
+    return failure();
   }
-  return op->emitError("index_cast on non-integer not suppported");
+  return success();
+}
+static LogicalResult printOperation(CudaEmitter &emitter,
+                                    arith::IndexCastOp op) {
+  if (failed(printVecCastOperation(emitter, *op.getOperation()))) {
+    return failure();
+  }
+  return success();
 }
 static LogicalResult printOperation(CudaEmitter &emitter, arith::BitcastOp op) {
   Operation *operation = op.getOperation();
@@ -1286,24 +1336,15 @@ static LogicalResult printOperation(CudaEmitter &emitter, arith::ShLIOp op) {
   return printBinaryOperation(emitter, op.getOperation(), "<<");
 }
 static LogicalResult printOperation(CudaEmitter &emitter, arith::FPToSIOp op) {
-  Operation *operation = op.getOperation();
-  auto &os = emitter.ostream();
-  auto iType = op.getResult().getType().dyn_cast<IntegerType>();
-  if (!iType) {
-    auto vType = op.getResult().getType().dyn_cast<VectorType>();
-    if (!vType)
-      return op.emitOpError("Unknown FPToSIOp Input Type");
-    iType = vType.getElementType().dyn_cast<IntegerType>();
-    if (!iType)
-      return op.emitOpError("Unknown FPToSIOp Input Type");
+  if (failed(printVecCastOperation(emitter, *op.getOperation()))) {
+    return failure();
   }
-
-  if (failed(emitter.emitAssignPrefix(*operation)))
+  return success();
+}
+static LogicalResult printOperation(CudaEmitter &emitter, arith::SIToFPOp op) {
+  if (failed(printVecCastOperation(emitter, *op.getOperation()))) {
     return failure();
-  os << "toSI<";
-  if (failed(emitter.emitType(op.getLoc(), iType)))
-    return failure();
-  os << ">(" << emitter.getOrCreateName(op->getOperand(0)) << ")";
+  }
   return success();
 }
 static LogicalResult printOperation(CudaEmitter &emitter, math::FloorOp op) {
@@ -1557,7 +1598,7 @@ static LogicalResult printOperation(CudaEmitter &emitter, vector::LoadOp op) {
   auto numEles = vecType.getShape()[0];
   for (long i = 0; i < numEles; i++) {
     if (failed(emitter.emitMemrefAccess(op->getLoc(), op.getBase(),
-                                        op.getIndices(), i))) {
+                                        op.getIndices(), std::to_string(i)))) {
       return failure();
     }
     if (i != numEles - 1)
@@ -1629,41 +1670,97 @@ static LogicalResult printOperation(CudaEmitter &emitter,
 }
 static LogicalResult printOperation(CudaEmitter &emitter, vector::SplatOp op) {
   Operation *operation = op.getOperation();
-  auto &os = emitter.ostream();
   auto vecType = op->getResult(0).getType().dyn_cast<VectorType>();
-  if (!vecType || vecType.getShape().size() != 1)
-    return failure();
   if (failed(emitter.emitAssignPrefix(*operation))) {
     return failure();
   }
-  os << "my_make_tuple(";
-  auto numEles = vecType.getShape()[0];
-  for (long i = 0; i < numEles; i++) {
-    os << emitter.getOrCreateName(op->getOperand(0));
-    if (i != numEles - 1)
-      os << ",";
-  }
-  os << ")";
-  return success();
+  auto shape = vecType.getShape();
+  auto v = emitter.getOrCreateName(op->getOperand(0)).str();
+  return printMakeTuple(emitter, shape,
+                        [&v](auto &emitter, const std::vector<int64_t> &) {
+                          emitter.ostream() << v;
+                          return success();
+                        });
 }
 static LogicalResult printOperation(CudaEmitter &emitter,
                                     vector::BroadcastOp op) {
   Operation *operation = op.getOperation();
-  auto &os = emitter.ostream();
-  auto vecType = op->getResult(0).getType().dyn_cast<VectorType>();
+  auto vecType = op.getResult().getType().dyn_cast<VectorType>();
   if (failed(emitter.emitAssignPrefix(*operation))) {
     return failure();
   }
-  os << "my_make_tuple(";
-  auto numEles = vecType.getShape()[0];
-  for (long i = 0; i < numEles; i++) {
-    os << emitter.getOrCreateName(op->getOperand(0));
-    if (i != numEles - 1)
-      os << ",";
+  std::vector<int64_t> shapeArr;
+  auto resultShape = vecType.getShape();
+  auto dim = vecType.getShape().size() -
+             op.getSource().getType().dyn_cast<VectorType>().getShape().size();
+  for (auto i = 0lu; i < dim; i++) {
+    shapeArr.push_back(resultShape[i]);
   }
-  os << ")";
-  return success();
+  llvm::ArrayRef<int64_t> shape(shapeArr);
+  auto v = emitter.getOrCreateName(op->getOperand(0)).str();
+  return printMakeTuple(emitter, shape,
+                        [&v](auto &emitter, const std::vector<int64_t> &) {
+                          emitter.ostream() << v;
+                          return success();
+                        });
 }
+static LogicalResult printOperation(CudaEmitter &emitter, vector::GatherOp op) {
+  Operation *operation = op.getOperation();
+  auto vecType = op->getResult(0).getType().dyn_cast<VectorType>();
+  auto shape = vecType.getShape();
+  if (failed(emitter.emitAssignPrefix(*operation))) {
+    return failure();
+  }
+  auto maskName = emitter.getOrCreateName(op.getMask());
+  auto indexVecName = emitter.getOrCreateName(op.getIndexVec());
+  auto passthruName = emitter.getOrCreateName(op.getPassThru());
+  return printMakeTuple(
+      emitter, shape, [&](auto &emitter, const std::vector<int64_t> &pos) {
+        auto &os = emitter.ostream();
+        printTupleAccess(emitter.ostream(), maskName, pos);
+        os << "?";
+        std::string temp;
+        llvm::raw_string_ostream stemp(temp);
+        printTupleAccess(stemp, indexVecName, pos);
+        stemp.flush();
+        if (failed(emitter.emitMemrefAccess(op->getLoc(), op.getBase(),
+                                            op.getIndices(), stemp.str()))) {
+          return failure();
+        }
+        os << ":";
+        printTupleAccess(emitter.ostream(), passthruName, pos);
+        return success();
+      });
+}
+static LogicalResult printOperation(CudaEmitter &emitter,
+                                    vector::ShuffleOp op) {
+  Operation *operation = op.getOperation();
+  auto vecType = op->getResult(0).getType().dyn_cast<VectorType>();
+  if (vecType.getShape().empty()) {
+    return op.emitOpError("ShuffleOp result can't be empty vector");
+  }
+  std::array<int64_t, 1> shapeArr{vecType.getShape()[0]};
+  llvm::ArrayRef<int64_t> shape(shapeArr);
+  if (failed(emitter.emitAssignPrefix(*operation))) {
+    return failure();
+  }
+  auto v1Name = emitter.getOrCreateName(op.getV1());
+  auto v2Name = emitter.getOrCreateName(op.getV2());
+  auto mask = op.getMask();
+  auto v1Size = op.getV1().getType().getShape()[0];
+  return printMakeTuple(
+      emitter, shape, [&](auto &emitter, const std::vector<int64_t> &pos) {
+        auto &os = emitter.ostream();
+        auto i = mask[pos[0]].dyn_cast<IntegerAttr>().getInt();
+        if (i < v1Size) {
+          printTupleAccess(os, v1Name, std::vector<int64_t>{i});
+        } else {
+          printTupleAccess(os, v2Name, std::vector<int64_t>{i - v1Size});
+        }
+        return success();
+      });
+}
+
 static LogicalResult printOperation(CudaEmitter &emitter, vector::FMAOp op) {
   Operation *operation = op.getOperation();
   auto &os = emitter.ostream();
@@ -1684,7 +1781,7 @@ static LogicalResult printOperation(CudaEmitter &emitter, vector::StoreOp op) {
   auto numEles = vecType.getShape()[0];
   for (long i = 0; i < numEles; i++) {
     if (failed(emitter.emitMemrefAccess(op->getLoc(), op.getBase(),
-                                        op.getIndices(), i))) {
+                                        op.getIndices(), std::to_string(i)))) {
       return failure();
     }
     os << " = ";
@@ -1920,7 +2017,8 @@ LogicalResult CudaEmitter::emitOperation(Operation &op,
                 arith::SubFOp, arith::MulFOp, arith::DivFOp, arith::MaxNumFOp,
                 arith::MinNumFOp, arith::CmpFOp, arith::OrIOp, arith::XOrIOp,
                 arith::AndIOp, arith::IndexCastUIOp, arith::BitcastOp,
-                arith::ShLIOp, arith::FPToSIOp>(
+                arith::IndexCastOp, arith::ShLIOp, arith::FPToSIOp,
+                arith::SIToFPOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<math::FloorOp, math::FmaOp>(
               [&](auto op) { return printOperation(*this, op); })
@@ -1937,18 +2035,16 @@ LogicalResult CudaEmitter::emitOperation(Operation &op,
               [&](auto op) { return printOperation(*this, op); })
           .Case<vector::LoadOp, vector::InsertOp, vector::ExtractOp,
                 vector::SplatOp, vector::FMAOp, vector::StoreOp,
-                vector::BroadcastOp>(
+                vector::BroadcastOp, vector::GatherOp, vector::ShuffleOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<scf::ForOp, scf::YieldOp, scf::IfOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<UnrealizedConversionCastOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
-            // os << "//";
-            // os << op.getName();
-            // return success();
-            return op.emitOpError(
-                formatv("unable to find printer for op {}", op.getName()));
+            std::string s = "unable to find printer for op";
+            s += op.getName().getStringRef().str();
+            return op.emitOpError(s);
           });
 
   if (failed(status))
