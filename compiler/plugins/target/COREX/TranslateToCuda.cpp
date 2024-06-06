@@ -1,4 +1,5 @@
 #include <iree/compiler/Dialect/HAL/IR/HALOps.h>
+#include <cmath>
 #include <cstdint>
 #include <numeric>
 #include <queue>
@@ -366,11 +367,32 @@ static LogicalResult printConstantOp(CudaEmitter &emitter, Operation *operation,
     auto shape = vType.getShape();
 
     if (auto dense = dyn_cast<DenseFPElementsAttr>(value)) {
+      auto fType = vType.getElementType();
+      std::string typeNoter = "";
+      if (fType.dyn_cast<Float32Type>()) {
+        typeNoter = "(float)";
+      } else if (fType.dyn_cast<Float64Type>()) {
+        typeNoter = "(double)";
+      } else if (fType.dyn_cast<Float16Type>()) {
+        typeNoter = "(half)";
+      } else if (fType.dyn_cast<BFloat16Type>()) {
+        typeNoter = "(bfloat16)";
+      } else {
+        operation->emitOpError("Unsupported float type");
+        return failure();
+      }
       return printMakeTuple(
           emitter, shape, dense.begin(), dense.end(),
           [](const APFloat &i) { return i.convertToDouble(); }, 0.0,
-          [](auto &emitter, const double &v) {
-            emitter.ostream() << v;
+          [&typeNoter](auto &emitter, const double &v) {
+            if (std::isnan(v)) {
+              emitter.ostream() << typeNoter << "NAN";
+            } else if (std::isinf(v)) {
+              emitter.ostream()
+                  << typeNoter << ((v > 0) ? "INFINITY" : "-INFINITY");
+            } else {
+              emitter.ostream() << typeNoter << v;
+            }
             return success();
           });
     } else if (auto dense = dyn_cast<DenseIntElementsAttr>(value)) {
@@ -418,6 +440,7 @@ static LogicalResult printOperation(CudaEmitter &emitter,
 static LogicalResult printOperation(CudaEmitter &emitter, ModuleOp moduleOp) {
   CudaEmitter::Scope scope(emitter);
   emitter.ostream() << "#include \"codegen_header.cu\"\n";
+  emitter.ostream() << "#include \"cmath\"\n";
   for (Operation &op : moduleOp) {
     if (failed(emitter.emitOperation(op, /*trailingSemicolon=*/false)))
       return failure();
@@ -927,18 +950,31 @@ LogicalResult CudaEmitter::emitType(Location loc, Type type) {
     return emitTupleType(loc, tType.getTypes());
   if (auto vType = dyn_cast<VectorType>(type)) {
     auto shape = vType.getShape();
-    if (shape.size() > 1) {
-      os << "auto";
-    } else {
+    auto eleType = vType.getElementType();
+    auto *emitter = this;
+    auto emitAtDim = [&shape, &loc, &eleType,
+                      emitter](auto self, int64_t dim) -> LogicalResult {
+      auto &os = emitter->ostream();
       os << "Tuple<";
-      for (int i = 0; i < shape[0]; i++) {
-        if (failed(emitType(loc, vType.getElementType()))) {
-          return failure();
+      for (int64_t i = 0; i < shape[dim]; i++) {
+        if (dim == shape.size() - 1) {
+          if (failed(emitter->emitType(loc, eleType))) {
+            return failure();
+          }
+        } else {
+          if (failed(self(self, dim + 1))) {
+            return failure();
+          }
         }
-        if (i != shape[0] - 1)
+        if (i != shape[dim] - 1) {
           os << ",";
+        }
       }
       os << ">";
+      return success();
+    };
+    if (failed(emitAtDim(emitAtDim, 0))) {
+      return failure();
     }
     return success();
   }
@@ -1322,14 +1358,29 @@ static LogicalResult printOperation(CudaEmitter &emitter,
 static LogicalResult printOperation(CudaEmitter &emitter, arith::BitcastOp op) {
   Operation *operation = op.getOperation();
   auto &os = emitter.ostream();
-
+  auto outType = op.getOut().getType();
+  auto inType = op.getIn().getType();
   if (failed(emitter.emitAssignPrefix(*operation)))
     return failure();
-  os << "*((";
-  if (failed(emitter.emitType(op.getLoc(), op.getOut().getType())))
-    return failure();
-  os << "*)&";
-  os << emitter.getOrCreateName(op.getIn()) << ")";
+  if (outType == inType) {
+    os << emitter.getOrCreateName(op.getIn());
+    return success();
+  }
+  if (outType.isa<VectorType>()) {
+    os << "bitcast<";
+    if (failed(emitter.emitType(
+            op->getLoc(), outType.dyn_cast<VectorType>().getElementType()))) {
+      return failure();
+    }
+    os << ">";
+    os << "(" << emitter.getOrCreateName(op.getIn()) << ")";
+  } else {
+    os << "*((";
+    if (failed(emitter.emitType(op.getLoc(), outType)))
+      return failure();
+    os << "*)&";
+    os << emitter.getOrCreateName(op.getIn()) << ")";
+  }
   return success();
 }
 static LogicalResult printOperation(CudaEmitter &emitter, arith::ShLIOp op) {
@@ -1346,6 +1397,9 @@ static LogicalResult printOperation(CudaEmitter &emitter, arith::SIToFPOp op) {
     return failure();
   }
   return success();
+}
+static LogicalResult printOperation(CudaEmitter &emitter, arith::ShRUIOp op) {
+  return printBinaryOperation(emitter, op.getOperation(), ">>");
 }
 static LogicalResult printOperation(CudaEmitter &emitter, math::FloorOp op) {
   Operation *operation = op.getOperation();
@@ -1367,6 +1421,27 @@ static LogicalResult printOperation(CudaEmitter &emitter, math::FmaOp op) {
   os << emitter.getOrCreateName(op.getC());
   return success();
 }
+
+static LogicalResult printOperation(CudaEmitter &emitter, math::RsqrtOp op) {
+  Operation *operation = op.getOperation();
+  auto &os = emitter.ostream();
+
+  if (failed(emitter.emitAssignPrefix(*operation)))
+    return failure();
+  os << "rsqrt(" << emitter.getOrCreateName(op.getOperand()) << ")";
+  return success();
+}
+
+static LogicalResult printOperation(CudaEmitter &emitter, math::AbsFOp op) {
+  Operation *operation = op.getOperation();
+  auto &os = emitter.ostream();
+
+  if (failed(emitter.emitAssignPrefix(*operation)))
+    return failure();
+  os << "abs(" << emitter.getOrCreateName(op.getOperand()) << ")";
+  return success();
+}
+
 static LogicalResult printOperation(CudaEmitter &emitter, gpu::ThreadIdOp op) {
   Operation *operation = op.getOperation();
   auto &os = emitter.ostream();
@@ -1733,6 +1808,83 @@ static LogicalResult printOperation(CudaEmitter &emitter, vector::GatherOp op) {
       });
 }
 static LogicalResult printOperation(CudaEmitter &emitter,
+                                    vector::ReductionOp op) {
+  Operation *operation = op.getOperation();
+  auto vecType = op.getVector().getType();
+  auto shape = vecType.getShape();
+  if (failed(emitter.emitAssignPrefix(*operation))) {
+    return failure();
+  }
+  using mlir::vector::CombiningKind;
+  std::string acc = emitter.getOrCreateName(op.getAcc()).str();
+  std::function<void(std::string)> f = [&acc](std::string v) { acc = acc + v; };
+  switch (op.getKind()) {
+  case CombiningKind::ADD: {
+    f = [&acc](std::string v) { acc = "(" + acc + "+" + v + ")"; };
+    break;
+  }
+  case CombiningKind::AND: {
+    f = [&acc](std::string v) { acc = "(" + acc + "&" + v + ")"; };
+    break;
+  }
+  case CombiningKind::MUL: {
+    f = [&acc](std::string v) { acc = "(" + acc + "*" + v + ")"; };
+    break;
+  }
+  case CombiningKind::OR: {
+    f = [&acc](std::string v) { acc = "(" + acc + "|" + v + ")"; };
+    break;
+  }
+  case CombiningKind::XOR: {
+    f = [&acc](std::string v) { acc = "(" + acc + "^" + v + ")"; };
+    break;
+  }
+  case CombiningKind::MAXF: {
+    f = [&acc](std::string v) { acc = "max(" + acc + "," + v + ")"; };
+    break;
+  }
+  case CombiningKind::MAXIMUMF: {
+    f = [&acc](std::string v) { acc = "maximum(" + acc + "," + v + ")"; };
+    break;
+  }
+  case CombiningKind::MAXSI: {
+    f = [&acc](std::string v) { acc = "max(" + acc + ",asSigned(" + v + "))"; };
+    break;
+  }
+  case CombiningKind::MAXUI: {
+    f = [&acc](std::string v) {
+      acc = "max(" + acc + ",asUnsigned(" + v + "))";
+    };
+    break;
+  }
+  case CombiningKind::MINSI: {
+    f = [&acc](std::string v) { acc = "min(" + acc + ",asSigned(" + v + "))"; };
+    break;
+  }
+  case CombiningKind::MINUI: {
+    f = [&acc](std::string v) {
+      acc = "min(" + acc + ",asUnsigned(" + v + "))";
+    };
+    break;
+  }
+  case CombiningKind::MINIMUMF: {
+    f = [&acc](std::string v) { acc = "minimum(" + acc + "," + v + ")"; };
+    break;
+  }
+  case CombiningKind::MINF: {
+    f = [&acc](std::string v) { acc = "min(" + acc + "," + v + ")"; };
+    break;
+  }
+  }
+  for (int64_t i = 0; i < shape[0]; i++) {
+    f("Get<" + llvm::itostr(i) + ">(" +
+      emitter.getOrCreateName(op.getVector()).str() + ")");
+  }
+  auto &os = emitter.ostream();
+  os << acc;
+  return success();
+}
+static LogicalResult printOperation(CudaEmitter &emitter,
                                     vector::ShuffleOp op) {
   Operation *operation = op.getOperation();
   auto vecType = op->getResult(0).getType().dyn_cast<VectorType>();
@@ -2007,7 +2159,7 @@ static LogicalResult printOperation(CudaEmitter &emitter,
 }
 LogicalResult CudaEmitter::emitOperation(Operation &op,
                                          bool trailingSemicolon) {
-  llvm::errs() << op.getName().getStringRef().str() + "\n";
+  // llvm::errs() << op.getName().getStringRef().str() + "\n";
   LogicalResult status =
       llvm::TypeSwitch<Operation *, LogicalResult>(&op)
           // Builtin ops.
@@ -2018,9 +2170,9 @@ LogicalResult CudaEmitter::emitOperation(Operation &op,
                 arith::MinNumFOp, arith::CmpFOp, arith::OrIOp, arith::XOrIOp,
                 arith::AndIOp, arith::IndexCastUIOp, arith::BitcastOp,
                 arith::IndexCastOp, arith::ShLIOp, arith::FPToSIOp,
-                arith::SIToFPOp>(
+                arith::SIToFPOp, arith::ShRUIOp>(
               [&](auto op) { return printOperation(*this, op); })
-          .Case<math::FloorOp, math::FmaOp>(
+          .Case<math::FloorOp, math::FmaOp, math::RsqrtOp, math::AbsFOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<gpu::ThreadIdOp, gpu::BarrierOp>(
               [&](auto op) { return printOperation(*this, op); })
@@ -2035,7 +2187,8 @@ LogicalResult CudaEmitter::emitOperation(Operation &op,
               [&](auto op) { return printOperation(*this, op); })
           .Case<vector::LoadOp, vector::InsertOp, vector::ExtractOp,
                 vector::SplatOp, vector::FMAOp, vector::StoreOp,
-                vector::BroadcastOp, vector::GatherOp, vector::ShuffleOp>(
+                vector::BroadcastOp, vector::GatherOp, vector::ShuffleOp,
+                vector::ReductionOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<scf::ForOp, scf::YieldOp, scf::IfOp>(
               [&](auto op) { return printOperation(*this, op); })
