@@ -2207,8 +2207,7 @@ LogicalResult CudaEmitter::emitOperation(Operation &op,
   llvm::errs() << "success " + op.getName().getStringRef().str() + "\n";
   return success();
 }
-/// Translates the given module op to CUDA kernel code. The operation or
-/// operations in the region of 'op' need all be in LLVM or NVVM dialect.
+/// Translates the given module op to CUDA kernel code.
 LogicalResult translateToCuda(Operation *op, raw_ostream &os) {
   CudaEmitter emitter(os, false);
   return emitter.emitOperation(*op, false);
