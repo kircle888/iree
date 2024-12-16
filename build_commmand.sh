@@ -1,0 +1,20 @@
+# Recommended development options using clang and lld:
+cmake -G Ninja -B ../iree-build/ -S . \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DIREE_ENABLE_ASSERTIONS=ON \
+    -DIREE_ENABLE_SPLIT_DWARF=ON \
+    -DIREE_ENABLE_THIN_ARCHIVES=ON \
+    -DCMAKE_C_COMPILER=gcc \
+    -DCMAKE_CXX_COMPILER=g++ \
+    -DIREE_ENABLE_LLD=OFF \
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DIREE_BUILD_PYTHON_BINDINGS=ON \
+    -DIREE_BUILD_BINDINGS_TFLITE=ON \
+    -DIREE_TARGET_BACKEND_CUDA=OFF \
+    -DIREE_TARGET_BACKEND_COREX=ON \
+    -DIREE_HAL_DRIVER_CUDA=OFF \
+    -DIREE_CUDA_LIBDEVICE_PATH=/usr/local/corex/nvvm/libdevice/libdevice.compute_bi.10.bc \
+    -DIREE_IMPORT_NCCL=OFF \
+    -DIREE_HAL_DRIVER_COREX=ON

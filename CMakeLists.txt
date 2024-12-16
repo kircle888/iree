@@ -253,6 +253,7 @@ option(IREE_HAL_DRIVER_DEFAULTS "Sets the default value for all runtime HAL driv
 # CUDA support is disabled by default. Note: a CUDA-compatible GPU with drivers is still
 # required to actually run CUDA workloads.
 set(IREE_HAL_DRIVER_CUDA_DEFAULT OFF)
+set(IREE_HAL_DRIVER_COREX_DEFAULT OFF)
 
 # HIP support is disabled by default. Note: a HIP-compatible GPU with drivers is still
 # required to actually run HIP workloads.
@@ -282,6 +283,7 @@ if(APPLE)
 endif()
 
 option(IREE_HAL_DRIVER_CUDA "Enables the 'cuda' runtime HAL driver" ${IREE_HAL_DRIVER_CUDA_DEFAULT})
+option(IREE_HAL_DRIVER_COREX "Enables the 'cuda' runtime HAL driver" ${IREE_HAL_DRIVER_COREX_DEFAULT})
 option(IREE_HAL_DRIVER_HIP "Enables the 'hip' runtime HAL driver" ${IREE_HAL_DRIVER_HIP_DEFAULT})
 option(IREE_HAL_DRIVER_LOCAL_SYNC "Enables the 'local-sync' runtime HAL driver" ${IREE_HAL_DRIVER_DEFAULTS})
 option(IREE_HAL_DRIVER_LOCAL_TASK "Enables the 'local-task' runtime HAL driver" ${IREE_HAL_DRIVER_DEFAULTS})
@@ -333,6 +335,9 @@ endif()
 message(STATUS "IREE HAL drivers:")
 if(IREE_HAL_DRIVER_CUDA)
   message(STATUS "  - cuda")
+endif()
+if(IREE_HAL_DRIVER_COREX)
+  message(STATUS "  - corex")
 endif()
 if(IREE_HAL_DRIVER_HIP)
   message(STATUS "  - hip")
@@ -403,6 +408,8 @@ if(NOT IREE_CUDA_AVAILABLE)
   set(IREE_TARGET_BACKEND_CUDA_DEFAULT OFF)
 endif()
 cmake_dependent_option(IREE_TARGET_BACKEND_CUDA "Enables the 'cuda' compiler target backend" OFF ${IREE_BUILD_COMPILER} OFF)
+
+cmake_dependent_option(IREE_TARGET_BACKEDN_COREX "Enable the 'corex' compiler target backend" OFF ${IREE_BUILD_COMPILER} OFF)
 
 # Non-default target backends either have additional dependencies or are
 # experimental/niche in some fashion.
@@ -765,7 +772,7 @@ set(IREE_CUDA_LIBDEVICE_PATH "" CACHE FILEPATH "Absolute path to an appropriate 
 
 # If any CUDA features are being built, try to locate a CUDA SDK. We will fall
 # back to this as needed for specific features.
-if(IREE_TARGET_BACKEND_CUDA OR IREE_HAL_DRIVER_CUDA)
+if(IREE_TARGET_BACKEND_CUDA OR IREE_HAL_DRIVER_CUDA OR IREE_HAL_DRIVER_COREX OR IREE_TARGET_BACKEDN_COREX)
   add_subdirectory(build_tools/third_party/cuda EXCLUDE_FROM_ALL)
 endif()
 

@@ -43,3 +43,7 @@ endif()
 if(IREE_TARGET_BACKEND_WEBGPU_SPIRV)
   add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/target/WebGPUSPIRV target/WebGPUSPIRV)
 endif()
+
+if(IREE_TARGET_BACKEND_COREX)
+  add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/target/COREX target/COREX)
+endif()
