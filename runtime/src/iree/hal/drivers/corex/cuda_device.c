@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/cuda_device.h"
+#include "iree/hal/drivers/corex/cuda_device.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -13,18 +13,18 @@
 #include "iree/base/internal/arena.h"
 #include "iree/base/internal/event_pool.h"
 #include "iree/base/internal/math.h"
-#include "iree/hal/drivers/cuda/cuda_allocator.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/cuda_status_util.h"
-#include "iree/hal/drivers/cuda/event_pool.h"
-#include "iree/hal/drivers/cuda/event_semaphore.h"
-#include "iree/hal/drivers/cuda/graph_command_buffer.h"
-#include "iree/hal/drivers/cuda/memory_pools.h"
-#include "iree/hal/drivers/cuda/nccl_channel.h"
-#include "iree/hal/drivers/cuda/nccl_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/nop_executable_cache.h"
-#include "iree/hal/drivers/cuda/stream_command_buffer.h"
-#include "iree/hal/drivers/cuda/timepoint_pool.h"
+#include "iree/hal/drivers/corex/cuda_allocator.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_status_util.h"
+#include "iree/hal/drivers/corex/event_pool.h"
+#include "iree/hal/drivers/corex/event_semaphore.h"
+#include "iree/hal/drivers/corex/graph_command_buffer.h"
+#include "iree/hal/drivers/corex/memory_pools.h"
+#include "iree/hal/drivers/corex/nccl_channel.h"
+#include "iree/hal/drivers/corex/nccl_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/nop_executable_cache.h"
+#include "iree/hal/drivers/corex/stream_command_buffer.h"
+#include "iree/hal/drivers/corex/timepoint_pool.h"
 #include "iree/hal/utils/deferred_command_buffer.h"
 #include "iree/hal/utils/deferred_work_queue.h"
 #include "iree/hal/utils/file_transfer.h"
@@ -79,7 +79,7 @@ typedef struct iree_hal_cuda_device_t {
 
   // Device memory pools and allocators.
   bool supports_memory_pools;
-  iree_hal_cuda_memory_pools_t memory_pools;
+  // iree_hal_cuda_memory_pools_t memory_pools;
   iree_hal_allocator_t* device_allocator;
 
   // Optional provider used for creating/configuring collective channels.
@@ -350,14 +350,17 @@ iree_hal_cuda_tracing_device_interface_add_graph_event_record_node(
     iree_hal_stream_tracing_native_graph_node_t* dependency_nodes,
     size_t dependency_nodes_count,
     iree_hal_stream_tracing_native_event_t event) {
-  iree_hal_cuda_tracing_device_interface_t* device_interface =
-      (iree_hal_cuda_tracing_device_interface_t*)base_device_interface;
+  // iree_hal_cuda_tracing_device_interface_t* device_interface =
+  //     (iree_hal_cuda_tracing_device_interface_t*)base_device_interface;
 
-  return IREE_CURESULT_TO_STATUS(
-      device_interface->cuda_symbols,
-      cuGraphAddEventRecordNode((CUgraphNode*)out_node, (CUgraph)graph,
-                                (CUgraphNode*)dependency_nodes,
-                                dependency_nodes_count, (CUevent)event));
+  // return IREE_CURESULT_TO_STATUS(
+  //     device_interface->cuda_symbols,
+  //     cuGraphAddEventRecordNode((CUgraphNode*)out_node, (CUgraph)graph,
+  //                               (CUgraphNode*)dependency_nodes,
+  //                               dependency_nodes_count, (CUevent)event));
+  return iree_make_status(IREE_STATUS_INCOMPATIBLE,
+                          "iree_hal_cuda_tracing_device_interface_add_graph_"
+                          "event_record_node is not supported on corex");
 }
 
 static iree_hal_cuda_device_t* iree_hal_cuda_device_cast(
@@ -483,28 +486,26 @@ static iree_status_t iree_hal_cuda_device_create_internal(
 
   // Memory pool support is conditional.
   if (iree_status_is_ok(status) && params->async_allocations) {
-    int supports_memory_pools = 0;
-    status = IREE_CURESULT_TO_STATUS(
-        cuda_symbols,
-        cuDeviceGetAttribute(&supports_memory_pools,
-                             CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED,
-                             cu_device),
-        "cuDeviceGetAttribute");
-    device->supports_memory_pools = supports_memory_pools != 0;
+    // status = IREE_CURESULT_TO_STATUS(
+    //     cuda_symbols,
+    //     cuDeviceGetAttribute(&supports_memory_pools,
+    //                          CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED,
+    //                          cu_device),
+    //     "cuDeviceGetAttribute");
+    device->supports_memory_pools = 0;
   }
 
   // Create memory pools first so that we can share them with the allocator.
-  if (iree_status_is_ok(status) && device->supports_memory_pools) {
-    status = iree_hal_cuda_memory_pools_initialize(
-        (iree_hal_device_t*)device, cuda_symbols, cu_device,
-        &params->memory_pools, host_allocator, &device->memory_pools);
-  }
+  // if (iree_status_is_ok(status) && device->supports_memory_pools) {
+  //   status = iree_hal_cuda_memory_pools_initialize(
+  //       (iree_hal_device_t*)device, cuda_symbols, cu_device,
+  //       &params->memory_pools, host_allocator, &device->memory_pools);
+  // }
 
   if (iree_status_is_ok(status)) {
     status = iree_hal_cuda_allocator_create(
         (iree_hal_device_t*)device, cuda_symbols, cu_device, dispatch_stream,
-        device->supports_memory_pools ? &device->memory_pools : NULL,
-        host_allocator, &device->device_allocator);
+        NULL, host_allocator, &device->device_allocator);
   }
 
   if (iree_status_is_ok(status)) {
@@ -624,7 +625,7 @@ static void iree_hal_cuda_device_destroy(iree_hal_device_t* base_device) {
   iree_hal_channel_provider_release(device->channel_provider);
 
   // Destroy memory pools that hold on to reserved memory.
-  iree_hal_cuda_memory_pools_deinitialize(&device->memory_pools);
+  // iree_hal_cuda_memory_pools_deinitialize(&device->memory_pools);
 
   iree_hal_stream_tracing_context_free(device->tracing_context);
 
@@ -689,10 +690,10 @@ static iree_status_t iree_hal_cuda_device_trim(iree_hal_device_t* base_device) {
   iree_hal_cuda_device_t* device = iree_hal_cuda_device_cast(base_device);
   iree_arena_block_pool_trim(&device->block_pool);
   IREE_RETURN_IF_ERROR(iree_hal_allocator_trim(device->device_allocator));
-  if (device->supports_memory_pools) {
-    IREE_RETURN_IF_ERROR(iree_hal_cuda_memory_pools_trim(
-        &device->memory_pools, &device->params.memory_pools));
-  }
+  // if (device->supports_memory_pools) {
+  //   IREE_RETURN_IF_ERROR(iree_hal_cuda_memory_pools_trim(
+  //       &device->memory_pools, &device->params.memory_pools));
+  // }
   return iree_ok_status();
 }
 
@@ -935,7 +936,7 @@ static iree_status_t iree_hal_cuda_device_queue_alloca(
     iree_hal_allocator_pool_t pool, iree_hal_buffer_params_t params,
     iree_device_size_t allocation_size,
     iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
-  iree_hal_cuda_device_t* device = iree_hal_cuda_device_cast(base_device);
+  // iree_hal_cuda_device_t* device = iree_hal_cuda_device_cast(base_device);
 
   // NOTE: block on the semaphores here; we could avoid this by properly
   // sequencing device work with semaphores. The CUDA HAL is not currently
@@ -948,16 +949,16 @@ static iree_status_t iree_hal_cuda_device_queue_alloca(
   // If pools are not supported we allocate a buffer as normal from whatever
   // allocator is set on the device.
   iree_status_t status = iree_ok_status();
-  if (device->supports_memory_pools &&
-      !iree_all_bits_set(params.type, IREE_HAL_MEMORY_TYPE_HOST_VISIBLE)) {
-    status = iree_hal_cuda_memory_pools_alloca(
-        &device->memory_pools, device->dispatch_cu_stream, pool, params,
-        allocation_size, out_buffer);
-  } else {
-    status = iree_hal_allocator_allocate_buffer(
-        iree_hal_device_allocator(base_device), params, allocation_size,
-        out_buffer);
-  }
+  // if (device->supports_memory_pools &&
+  //     !iree_all_bits_set(params.type, IREE_HAL_MEMORY_TYPE_HOST_VISIBLE)) {
+  //   status = iree_hal_cuda_memory_pools_alloca(
+  //       &device->memory_pools, device->dispatch_cu_stream, pool, params,
+  //       allocation_size, out_buffer);
+  // } else {
+  status =
+      iree_hal_allocator_allocate_buffer(iree_hal_device_allocator(base_device),
+                                         params, allocation_size, out_buffer);
+  // }
 
   // Only signal if not returning a synchronous error - synchronous failure
   // indicates that the stream is unchanged (it's not really since we waited
@@ -989,8 +990,8 @@ static iree_status_t iree_hal_cuda_device_queue_dealloca(
   // drop it on the floor and let it be freed when the buffer is released.
   iree_status_t status = iree_ok_status();
   if (device->supports_memory_pools) {
-    status = iree_hal_cuda_memory_pools_dealloca(
-        &device->memory_pools, device->dispatch_cu_stream, buffer);
+    // status = iree_hal_cuda_memory_pools_dealloca(
+    //     &device->memory_pools, device->dispatch_cu_stream, buffer);
   }
 
   // Only signal if not returning a synchronous error - synchronous failure

@@ -129,6 +129,8 @@ createLLVMGPUVectorToGPUPass(GPUTensorCoreType tensorCoreType);
 std::unique_ptr<InterfacePass<FunctionOpInterface>>
 createLLVMGPUTileAndDistributePass(bool distributeToWarp);
 
+std::unique_ptr<OperationPass<ModuleOp>> createConvertToCOREXPass();
+
 //----------------------------------------------------------------------------//
 // Register LLVMGPU Passes
 //----------------------------------------------------------------------------//

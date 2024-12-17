@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/event_pool.h"
+#include "iree/hal/drivers/corex/event_pool.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -14,8 +14,8 @@
 #include "iree/base/internal/atomics.h"
 #include "iree/base/internal/synchronization.h"
 #include "iree/hal/api.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/cuda_status_util.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_status_util.h"
 
 //===----------------------------------------------------------------------===//
 // iree_hal_cuda_event_t

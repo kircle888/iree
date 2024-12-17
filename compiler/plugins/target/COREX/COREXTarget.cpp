@@ -627,6 +627,7 @@ public:
         return failure();
       }
 #endif
+      llvm::errs() << "Start Translation" << "\n";
         llvm::raw_string_ostream ss(targetPTX);
         if (failed(mlir::emitcuda::translateToCuda(innerModuleOp, ss))) {
           return failure();

@@ -8,7 +8,7 @@
 #define IREE_HAL_DRIVERS_CUDA_EVENT_POOL_H_
 
 #include "iree/base/api.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
 
 #ifdef __cplusplus
 extern "C" {

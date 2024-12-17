@@ -27,11 +27,11 @@ IREE_CU_PFN_DECL(cuEventElapsedTime, float*, CUevent, CUevent)
 IREE_CU_PFN_DECL(cuEventQuery, CUevent)
 IREE_CU_PFN_DECL(cuEventRecord, CUevent, CUstream)
 IREE_CU_PFN_DECL(cuEventSynchronize, CUevent)
-IREE_CU_PFN_DECL(cuGetProcAddress, const char*, void**, int, cuuint64_t)
+// IREE_CU_PFN_DECL(cuGetProcAddress, const char*, void**, int, cuuint64_t)
 IREE_CU_PFN_DECL(cuGraphAddEmptyNode, CUgraphNode*, CUgraph, const CUgraphNode*,
                  size_t)
-IREE_CU_PFN_DECL(cuGraphAddEventRecordNode, CUgraphNode*, CUgraph,
-                 const CUgraphNode*, size_t, CUevent)
+// IREE_CU_PFN_DECL(cuGraphAddEventRecordNode, CUgraphNode*, CUgraph,
+//                  const CUgraphNode*, size_t, CUevent)
 IREE_CU_PFN_DECL(cuGraphAddMemcpyNode, CUgraphNode*, CUgraph,
                  const CUgraphNode*, size_t, const CUDA_MEMCPY3D*, CUcontext)
 IREE_CU_PFN_DECL(cuGraphAddMemsetNode, CUgraphNode*, CUgraph,
@@ -56,18 +56,18 @@ IREE_CU_PFN_DECL(cuMemHostAlloc, void**, size_t, unsigned int)
 IREE_CU_PFN_DECL(cuMemHostRegister, void*, size_t, unsigned int)
 IREE_CU_PFN_DECL(cuMemHostUnregister, void*)
 IREE_CU_PFN_DECL(cuMemHostGetDevicePointer, CUdeviceptr*, void*, unsigned int)
-IREE_CU_PFN_DECL(cuMemPoolCreate, CUmemoryPool*, const CUmemPoolProps*)
-IREE_CU_PFN_DECL(cuMemPoolDestroy, CUmemoryPool)
-IREE_CU_PFN_DECL(cuMemPoolSetAccess, CUmemoryPool, const CUmemAccessDesc*,
-                 size_t)
-IREE_CU_PFN_DECL(cuMemPoolGetAttribute, CUmemoryPool, CUmemPool_attribute,
-                 void*)
-IREE_CU_PFN_DECL(cuMemPoolSetAttribute, CUmemoryPool, CUmemPool_attribute,
-                 void*)
-IREE_CU_PFN_DECL(cuMemPoolTrimTo, CUmemoryPool, size_t)
-IREE_CU_PFN_DECL(cuMemAllocFromPoolAsync, CUdeviceptr*, size_t, CUmemoryPool,
-                 CUstream)
-IREE_CU_PFN_DECL(cuMemFreeAsync, CUdeviceptr dptr, CUstream hStream)
+// IREE_CU_PFN_DECL(cuMemPoolCreate, CUmemoryPool*, const CUmemPoolProps*)
+// IREE_CU_PFN_DECL(cuMemPoolDestroy, CUmemoryPool)
+// IREE_CU_PFN_DECL(cuMemPoolSetAccess, CUmemoryPool, const CUmemAccessDesc*,
+//                  size_t)
+// IREE_CU_PFN_DECL(cuMemPoolGetAttribute, CUmemoryPool, CUmemPool_attribute,
+//                  void*)
+// IREE_CU_PFN_DECL(cuMemPoolSetAttribute, CUmemoryPool, CUmemPool_attribute,
+//                  void*)
+// IREE_CU_PFN_DECL(cuMemPoolTrimTo, CUmemoryPool, size_t)
+// IREE_CU_PFN_DECL(cuMemAllocFromPoolAsync, CUdeviceptr*, size_t, CUmemoryPool,
+//                  CUstream)
+// IREE_CU_PFN_DECL(cuMemFreeAsync, CUdeviceptr dptr, CUstream hStream)
 IREE_CU_PFN_DECL(cuModuleGetFunction, CUfunction*, CUmodule, const char*)
 IREE_CU_PFN_DECL(cuModuleLoadDataEx, CUmodule*, const void*, unsigned int,
                  CUjit_option*, void**)

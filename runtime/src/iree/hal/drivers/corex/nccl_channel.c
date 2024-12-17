@@ -4,16 +4,16 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/nccl_channel.h"
+#include "iree/hal/drivers/corex/nccl_channel.h"
 
 #include <stddef.h>
 #include <stdlib.h>
 
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
-#include "iree/hal/drivers/cuda/cuda_buffer.h"
-#include "iree/hal/drivers/cuda/cuda_status_util.h"
-#include "iree/hal/drivers/cuda/nccl_status_util.h"
+#include "iree/hal/drivers/corex/cuda_buffer.h"
+#include "iree/hal/drivers/corex/cuda_status_util.h"
+#include "iree/hal/drivers/corex/nccl_status_util.h"
 
 typedef struct iree_hal_cuda_nccl_channel_t {
   iree_hal_resource_t resource;

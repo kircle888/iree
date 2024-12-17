@@ -1071,7 +1071,7 @@ addLowerAndOptimizeAddressComputationPasses(FunctionLikeNest &funcPassManager) {
 }
 
 static void addLowerToLLVMGPUPasses(OpPassManager &modulePassManager,
-                                    bool forROCDL) {
+                                    bool forROCDL, bool forCorex=true) {
   modulePassManager.addPass(
       createConvertHALDescriptorTypeToGPUAddressSpacePass());
   modulePassManager.addPass(createCanonicalizerPass());
@@ -1109,13 +1109,38 @@ static void addLowerToLLVMGPUPasses(OpPassManager &modulePassManager,
   addLowerAndOptimizeAddressComputationPasses(funcPassManager);
 
   // Run checks on shared memory usage.
-  funcPassManager
-      .addPass([&]() {
-        auto getIndexBitwidth = [](mlir::FunctionOpInterface) { return 64; };
-        return createGPUCheckResourceUsagePass(getIndexBitwidth);
-      })
-      // SCF -> CF
-      .addPass(createConvertSCFToCFPass)
+  funcPassManager.addPass([&]() {
+    auto getIndexBitwidth = [](mlir::FunctionOpInterface) { return 64; };
+    return createGPUCheckResourceUsagePass(getIndexBitwidth);
+  });
+  if (forCorex) {
+    funcPassManager.addPass(createCanonicalizerPass)
+        .addPass(createCSEPass)
+        // Handle complex operation conversion.
+        .addPass(createConvertComplexToStandardPass)
+        // Convert BF16 operations to occur as F32.
+        .addPass(createConvertBf16ArithToF32Pass)
+        .addPass(createConvertBf16ToUInt16BuffersPass)
+        // Convert math dialect elementry functions to polynomial form.
+        .addPass(createPolynomialApproximationPass)
+        .addPass(memref::createExpandOpsPass)
+        .addPass(memref::createFoldMemRefAliasOpsPass)
+        .addPass(memref::createExpandStridedMetadataPass)
+        .addPass(createEmulateNarrowTypePass)
+        .addPass(affine::createAffineExpandIndexOpsPass)
+        .addPass(createLowerAffinePass)
+        .addPass(createCanonicalizerPass)
+        .addPass(createCSEPass);
+    // Strip out the debug info for the kernel.
+    modulePassManager.addPass(createStripDebugInfoPass());
+    // Cast address spaces of all function arguments to generic.
+    modulePassManager.addPass(createLLVMGPUCastAddressSpaceFunctionPass());
+    modulePassManager.addPass(IREE::Util::createDropCompilerHintsPass());
+    modulePassManager.addPass(createConvertToCOREXPass());
+    return;
+  }
+  // SCF -> CF
+  funcPassManager.addPass(createConvertSCFToCFPass)
       .addPass(createCanonicalizerPass)
       .addPass(createCSEPass)
       // Handle complex operation conversion.

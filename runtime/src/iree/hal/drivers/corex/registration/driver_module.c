@@ -4,14 +4,14 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/registration/driver_module.h"
+#include "iree/hal/drivers/corex/registration/driver_module.h"
 
 #include <inttypes.h>
 #include <stddef.h>
 
 #include "iree/base/api.h"
 #include "iree/base/internal/flags.h"
-#include "iree/hal/drivers/cuda/api.h"
+#include "iree/hal/drivers/corex/api.h"
 
 IREE_FLAG(
     bool, cuda_use_streams, true,
@@ -74,8 +74,8 @@ static iree_status_t iree_hal_cuda_driver_factory_enumerate(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   static const iree_hal_driver_info_t driver_infos[1] = {{
-      .driver_name = IREE_SVL("cuda"),
-      .full_name = IREE_SVL("NVIDIA CUDA HAL driver (via dylib)"),
+      .driver_name = IREE_SVL("corex"),
+      .full_name = IREE_SVL("COREX HAL driver (via dylib)"),
   }};
   *out_driver_info_count = IREE_ARRAYSIZE(driver_infos);
   *out_driver_infos = driver_infos;
@@ -89,7 +89,7 @@ static iree_status_t iree_hal_cuda_driver_factory_try_create(
     iree_hal_driver_t** out_driver) {
   IREE_ASSERT_ARGUMENT(out_driver);
 
-  if (!iree_string_view_equal(driver_name, IREE_SV("cuda"))) {
+  if (!iree_string_view_equal(driver_name, IREE_SV("corex"))) {
     return iree_make_status(IREE_STATUS_UNAVAILABLE,
                             "no driver '%.*s' is provided by this factory",
                             (int)driver_name.size, driver_name.data);

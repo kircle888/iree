@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/cuda_status_util.h"
+#include "iree/hal/drivers/corex/cuda_status_util.h"
 
 #include <stddef.h>
 
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
 
 // The list of CUDA error strings with their corresponding IREE error state
 // classification.

@@ -9,7 +9,7 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/dynamic_library.h"
-#include "iree/hal/drivers/cuda/cuda_headers.h"
+#include "iree/hal/drivers/corex/cuda_headers.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,7 +28,7 @@ typedef struct iree_hal_cuda_dynamic_symbols_t {
   // Concrete CUDA symbols defined by including the `dynamic_symbol_tables.h`.
 #define IREE_CU_PFN_DECL(cudaSymbolName, ...) \
   CUresult (*cudaSymbolName)(__VA_ARGS__);
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbol_table.h"  // IWYU pragma: export
+#include "iree/hal/drivers/corex/cuda_dynamic_symbol_table.h"  // IWYU pragma: export
 #undef IREE_CU_PFN_DECL
 } iree_hal_cuda_dynamic_symbols_t;
 

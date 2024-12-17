@@ -71,6 +71,7 @@ iree_cc_library(
     "ROCDLPasses.h"
   SRCS
     "ConvertToLLVM.cpp"
+    "ConvertToCOREX.cpp"
     "ConvertToNVVM.cpp"
     "ConvertToROCDL.cpp"
     "ExtractAddressComputationGPUPass.cpp"

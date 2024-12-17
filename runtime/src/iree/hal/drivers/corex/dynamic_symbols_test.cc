@@ -7,8 +7,8 @@
 #include <iostream>
 
 #include "iree/base/api.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/nccl_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/nccl_dynamic_symbols.h"
 #include "iree/testing/gtest.h"
 
 namespace iree {

@@ -9,8 +9,8 @@
 
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/memory_pools.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/memory_pools.h"
 
 #ifdef __cplusplus
 extern "C" {

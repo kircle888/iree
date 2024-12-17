@@ -9,12 +9,12 @@
 
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
-#include "iree/hal/drivers/cuda/api.h"
-#include "iree/hal/drivers/cuda/cuda_device.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/cuda_status_util.h"
-#include "iree/hal/drivers/cuda/nccl_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/nccl_status_util.h"
+#include "iree/hal/drivers/corex/api.h"
+#include "iree/hal/drivers/corex/cuda_device.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_status_util.h"
+#include "iree/hal/drivers/corex/nccl_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/nccl_status_util.h"
 
 // Maximum device name length supported by the CUDA HAL driver.
 #define IREE_HAL_CUDA_MAX_DEVICE_NAME_LENGTH 128

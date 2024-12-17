@@ -4,14 +4,14 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/nop_executable_cache.h"
+#include "iree/hal/drivers/corex/nop_executable_cache.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
-#include "iree/hal/drivers/cuda/native_executable.h"
+#include "iree/hal/drivers/corex/native_executable.h"
 
 typedef struct iree_hal_cuda_nop_executable_cache_t {
   // Abstract resource used for injecting reference counting and vtable;

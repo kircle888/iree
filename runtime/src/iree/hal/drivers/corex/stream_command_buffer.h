@@ -9,9 +9,9 @@
 
 #include "iree/base/internal/arena.h"
 #include "iree/hal/api.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/cuda_headers.h"
-#include "iree/hal/drivers/cuda/nccl_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_headers.h"
+#include "iree/hal/drivers/corex/nccl_dynamic_symbols.h"
 #include "iree/hal/utils/stream_tracing.h"
 
 #ifdef __cplusplus

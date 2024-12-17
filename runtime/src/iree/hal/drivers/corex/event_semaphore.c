@@ -4,13 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/event_semaphore.h"
+#include "iree/hal/drivers/corex/event_semaphore.h"
 
 #include "iree/base/internal/synchronization.h"
 #include "iree/base/internal/wait_handle.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/cuda_status_util.h"
-#include "iree/hal/drivers/cuda/timepoint_pool.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_status_util.h"
+#include "iree/hal/drivers/corex/timepoint_pool.h"
 #include "iree/hal/utils/deferred_work_queue.h"
 #include "iree/hal/utils/semaphore_base.h"
 

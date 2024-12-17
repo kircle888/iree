@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/cuda_buffer.h"
+#include "iree/hal/drivers/corex/cuda_buffer.h"
 
 #include <stddef.h>
 #include <stdint.h>

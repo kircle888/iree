@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/nccl_status_util.h"
+#include "iree/hal/drivers/corex/nccl_status_util.h"
 
 #include <stddef.h>
 
-#include "iree/hal/drivers/cuda/nccl_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/nccl_dynamic_symbols.h"
 
 iree_status_t iree_hal_cuda_nccl_result_to_status(
     const iree_hal_cuda_nccl_dynamic_symbols_t* syms, ncclResult_t result,

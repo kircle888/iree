@@ -2336,10 +2336,10 @@ static LogicalResult setRootConfig(IREE::GPU::TargetAttr target,
       LDBG("Contract Config");
       return success();
     }
-    if (succeeded(setWarpReductionConfig(target, entryPointFn, linalgOp))) {
-      LDBG("Warp Reduction Config");
-      return success();
-    }
+    // if (succeeded(setWarpReductionConfig(target, entryPointFn, linalgOp))) {
+    //   LDBG("Warp Reduction Config");
+    //   return success();
+    // }
     if (succeeded(setConvolutionConfig(target, linalgOp, 16))) {
       LDBG("Convolution Config");
       return success();

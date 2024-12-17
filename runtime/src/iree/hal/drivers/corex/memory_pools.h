@@ -10,10 +10,12 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/atomics.h"
 #include "iree/hal/api.h"
-#include "iree/hal/drivers/cuda/api.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/cuda_headers.h"
-
+#include "iree/hal/drivers/corex/api.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_headers.h"
+typedef struct iree_hal_cuda_memory_pools_t {
+} iree_hal_cuda_memory_pools_t;
+#if 0
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
@@ -78,3 +80,5 @@ iree_status_t iree_hal_cuda_memory_pools_dealloca(
 #endif  // __cplusplus
 
 #endif  // IREE_HAL_DRIVERS_CUDA_MEMORY_POOLS_H_
+
+#endif

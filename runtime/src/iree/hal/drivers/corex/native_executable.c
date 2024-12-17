@@ -4,13 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/native_executable.h"
+#include "iree/hal/drivers/corex/native_executable.h"
 
 #include <stddef.h>
 
 #include "iree/base/api.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/cuda_status_util.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_status_util.h"
 #include "iree/hal/utils/executable_debug_info.h"
 
 // flatcc schemas:
@@ -289,32 +289,105 @@ iree_status_t iree_hal_cuda_native_executable_create(
     flatbuffers_string_t ptx_image =
         iree_hal_cuda_ModuleDef_ptx_image_get(module_def);
 
+    void* theModule;
+    {
+      // Load the PTX image - this will fail if the device cannot handle the
+      // contents. We could check this prior to creating
+      int callStatus = 0;
+      // if (iree_status_is_ok(status)) {
+      //   callStatus = system("mkdir /tmp/iree-corex");
+      //   if (callStatus) {
+      //     status = iree_make_status(IREE_STATUS_UNKNOWN, "mkdir failed");
+      //   }
+      // }
+      if (iree_status_is_ok(status)) {
+        FILE* ptxFd = fopen("/tmp/iree-corex/temp1.cu", "w");
+        fprintf(ptxFd, "%s", ptx_image);
+        fclose(ptxFd);
+      }
+      if (iree_status_is_ok(status)) {
+        callStatus = system(
+            "/usr/local/corex-3.0.1/bin/clang++ -std=c++17 -S -emit-llvm  "
+            "--cuda-device-only /tmp/iree-corex/temp1.cu -o "
+            "/tmp/iree-corex/temp1.ll -O3");
+        if (callStatus) {
+          status = iree_make_status(IREE_STATUS_UNKNOWN, "clang++ failed");
+        }
+      }
+      if (iree_status_is_ok(status)) {
+        callStatus = system(
+            "/usr/local/corex-3.0.1/bin/llc -march=bi -filetype=obj "
+            "/tmp/iree-corex/temp1.ll -o "
+            "/tmp/iree-corex/temp1.o");
+        if (callStatus) {
+          status = iree_make_status(IREE_STATUS_UNKNOWN, "lld failed");
+        }
+      }
+      if (iree_status_is_ok(status)) {
+        callStatus = system(
+            "/usr/local/corex-3.0.1/bin/lld -flavor ld.lld "
+            "--no-warn-missing-entry "
+            "--no-undefined /tmp/iree-corex/temp1.o -o "
+            "/tmp/iree-corex/temp1.cubin");
+        if (callStatus) {
+          status = iree_make_status(IREE_STATUS_UNKNOWN, "lld failed");
+        }
+      }
+      if (iree_status_is_ok(status)) {
+        callStatus = system(
+            "/usr/local/corex-3.0.1/bin/fatbinary --cuda --64 "
+            "--image=profile=ivcore10,file=/tmp/iree-corex/temp1.cubin "
+            "--create "
+            "/tmp/iree-corex/temp1.fatbin");
+        if (callStatus) {
+          status = iree_make_status(IREE_STATUS_UNKNOWN, "fatbinary failed");
+        }
+      }
+      if (iree_status_is_ok(status)) {
+        FILE* moduleFd = fopen("/tmp/iree-corex/temp1.fatbin", "rb");
+        fseek(moduleFd, 0L, SEEK_END);
+        size_t moduleFileSize = ftell(moduleFd);
+        rewind(moduleFd);
+        theModule = malloc(moduleFileSize);
+        fread(theModule, 1, moduleFileSize, moduleFd);
+        fclose(moduleFd);
+      }
+      // if (iree_status_is_ok(status)) {
+      //   callStatus = system("rm -rf /tmp/iree-corex");
+      //   if (callStatus) {
+      //     status = iree_make_status(IREE_STATUS_UNKNOWN, "rm failed");
+      //   }
+      // }
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
+    }
+
     // TODO: pass cuJitOption values to get log info and other info back.
     // We pass the error buffer today but could use the info log to diagnose
     // performance warnings.
-    char error_log[8192] = {0};
-    CUjit_option jit_options[] = {
-        CU_JIT_ERROR_LOG_BUFFER,
-        CU_JIT_ERROR_LOG_BUFFER_SIZE_BYTES,
-    };
-    void* jit_option_values[] = {
-        (void*)error_log,
-        (void*)(uint32_t)sizeof(error_log),
-    };
+    // char error_log[8192] = {0};
+    // CUjit_option jit_options[] = {
+    //     CU_JIT_ERROR_LOG_BUFFER,
+    //     CU_JIT_ERROR_LOG_BUFFER_SIZE_BYTES,
+    // };
+    // void* jit_option_values[] = {
+    //     (void*)error_log,
+    //     (void*)(uint32_t)sizeof(error_log),
+    // };
     CUmodule module = NULL;
     status = IREE_CURESULT_TO_STATUS(
-        symbols,
-        cuModuleLoadDataEx(&module, ptx_image, IREE_ARRAYSIZE(jit_options),
-                           jit_options, jit_option_values),
+        symbols, cuModuleLoadDataEx(&module, ptx_image, 0, NULL, NULL),
         "cuModuleLoadDataEx");
     if (!iree_status_is_ok(status)) {
       status = iree_status_annotate(
           status,
           IREE_SV("mismatched target chip? missing/wrong bitcode directory?"));
-      if (strlen(error_log) > 0) {
-        status =
-            iree_status_annotate(status, iree_make_cstring_view(error_log));
-      }
+      //   if (strlen(error_log) > 0) {
+      //     status =
+      //         iree_status_annotate(status,
+      //         iree_make_cstring_view(error_log));
+      //   }
       break;
     }
 

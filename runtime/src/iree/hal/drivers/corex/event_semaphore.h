@@ -11,8 +11,8 @@
 
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/timepoint_pool.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/timepoint_pool.h"
 #include "iree/hal/utils/deferred_work_queue.h"
 
 #ifdef __cplusplus

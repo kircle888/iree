@@ -23,6 +23,7 @@
 #include "llvm/Transforms/IPO.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
@@ -411,6 +412,100 @@ static LogicalResult printOperation(CudaEmitter &emitter, ModuleOp moduleOp) {
     if (failed(emitter.emitOperation(op, /*trailingSemicolon=*/false)))
       return failure();
   }
+  return success();
+}
+
+static LogicalResult printOperation(CudaEmitter &emitter,
+                                    func::FuncOp functionOp) {
+  // We need to declare variables at top if the function has multiple blocks.
+  if (!emitter.shouldDeclareVariablesAtTop() &&
+      functionOp.getBlocks().size() > 1) {
+    return functionOp.emitOpError(
+        "with multiple blocks needs variables declared at top");
+  }
+
+  CudaEmitter::Scope scope(emitter);
+  raw_indented_ostream &os = emitter.ostream();
+  os << "extern\"C\" __global__ ";
+  if (failed(emitter.emitTypes(functionOp.getLoc(),
+                               functionOp.getFunctionType().getResults())))
+    return failure();
+  os << " " << functionOp.getName();
+
+  os << "(";
+  if (failed(interleaveCommaWithError(
+          functionOp.getArguments(), os,
+          [&](BlockArgument arg) -> LogicalResult {
+            if (failed(emitter.emitType(functionOp.getLoc(), arg.getType())))
+              return failure();
+            os << " " << emitter.getOrCreateName(arg);
+            return success();
+          })))
+    return failure();
+  os << ") {\n";
+  os.indent();
+  if (failed(emitter.emitInitializeOps())) {
+    return failure();
+  }
+
+  if (emitter.shouldDeclareVariablesAtTop()) {
+    // Declare all variables that hold op results including those from nested
+    // regions.
+    WalkResult result =
+        functionOp.walk<WalkOrder::PreOrder>([&](Operation *op) -> WalkResult {
+          for (OpResult result : op->getResults()) {
+            if (failed(emitter.emitVariableDeclaration(
+                    result, /*trailingSemicolon=*/true))) {
+              return WalkResult(
+                  op->emitError("unable to declare result variable for op"));
+            }
+          }
+          return WalkResult::advance();
+        });
+    if (result.wasInterrupted())
+      return failure();
+  }
+
+  Region::BlockListType &blocks = functionOp.getBlocks();
+  // Create label names for basic blocks.
+  for (Block &block : blocks) {
+    emitter.getOrCreateName(block);
+  }
+
+  // Declare variables for basic block arguments.
+  for (Block &block : llvm::drop_begin(blocks)) {
+    for (BlockArgument &arg : block.getArguments()) {
+      if (emitter.hasValueInScope(arg))
+        return functionOp.emitOpError(" block argument #")
+               << arg.getArgNumber() << " is out of scope";
+      if (failed(
+              emitter.emitType(block.getParentOp()->getLoc(), arg.getType()))) {
+        return failure();
+      }
+      os << " " << emitter.getOrCreateName(arg) << ";\n";
+    }
+  }
+
+  for (Block &block : blocks) {
+    // Only print a label if the block has predecessors.
+    if (!block.hasNoPredecessors()) {
+      if (failed(emitter.emitLabel(block)))
+        return failure();
+    }
+    for (Operation &op : block.getOperations()) {
+      // When generating code for an emitc.if or cf.cond_br op no semicolon
+      // needs to be printed after the closing brace.
+      // When generating code for an emitc.for op, printing a trailing semicolon
+      // is handled within the printOperation function.
+      bool trailingSemicolon = !isa<scf::ForOp>(op);
+
+      if (failed(emitter.emitOperation(
+              op, /*trailingSemicolon=*/trailingSemicolon)))
+        return failure();
+    }
+  }
+  os.unindent() << "}\n";
+  emitter.inFunction = false;
   return success();
 }
 
@@ -1230,6 +1325,10 @@ static LogicalResult printOperation(CudaEmitter &emitter, arith::DivSIOp op) {
   Operation *operation = op.getOperation();
   return printBinaryOperation(emitter, operation, "/");
 }
+static LogicalResult printOperation(CudaEmitter &emitter, arith::RemSIOp op) {
+  Operation *operation = op.getOperation();
+  return printBinaryOperation(emitter, operation, "%");
+}
 static LogicalResult printOperation(CudaEmitter &emitter, arith::SubIOp op) {
   Operation *operation = op.getOperation();
   return printBinaryOperation(emitter, operation, "-");
@@ -1278,6 +1377,30 @@ static LogicalResult printOperation(CudaEmitter &emitter, arith::MinNumFOp op) {
   os << emitter.getOrCreateName(op.getLhs());
   os << " : ";
   os << emitter.getOrCreateName(op.getRhs());
+  return success();
+}
+static LogicalResult printOperation(CudaEmitter &emitter, arith::MinSIOp op) {
+  Operation *operation = op.getOperation();
+  auto &os = emitter.ostream();
+
+  if (failed(emitter.emitAssignPrefix(*operation)))
+    return failure();
+  os << "min(" << emitter.getOrCreateName(op.getLhs());
+  os << ",";
+  os << emitter.getOrCreateName(op.getRhs());
+  os << ")";
+  return success();
+}
+static LogicalResult printOperation(CudaEmitter &emitter, arith::MaxSIOp op) {
+  Operation *operation = op.getOperation();
+  auto &os = emitter.ostream();
+
+  if (failed(emitter.emitAssignPrefix(*operation)))
+    return failure();
+  os << "max(" << emitter.getOrCreateName(op.getLhs());
+  os << ",";
+  os << emitter.getOrCreateName(op.getRhs());
+  os << ")";
   return success();
 }
 static LogicalResult printCastOperation(CudaEmitter &emitter,
@@ -1521,6 +1644,37 @@ static LogicalResult printOperation(CudaEmitter &emitter, memref::AllocOp op) {
   }
   return success();
 }
+
+static LogicalResult printOperation(CudaEmitter &emitter, memref::AllocaOp op) {
+  if (op->getNumOperands() != 0) {
+    return emitError(op->getLoc(),
+                     "memref.alloca must be static and have no operands!");
+  }
+  if (op->getNumResults() != 1) {
+    return emitError(op->getLoc(), "memref.alloca must have only one result!");
+  }
+  auto &os = emitter.ostream();
+  MemRefType mref = op.getResult().getType();
+  if (!mref.hasStaticShape()) {
+    return emitError(op->getLoc(), "memref.alloca must be static!");
+  }
+  if (failed(emitter.emitType(op->getLoc(), mref.getElementType()))) {
+    return failure();
+  }
+  StringRef resultName = emitter.getOrCreateName(op.getResult());
+  std::string ptrName = resultName.str() + "_" + "ptr";
+  os << " " << ptrName;
+  auto shape = mref.getShape();
+  auto shapeSize = std::accumulate(shape.begin(), shape.end(), 1ll,
+                                   [](auto x, auto y) { return x * y; });
+  os << "[" << shapeSize << "];\n";
+  if (failed(printMemrefDeclare(emitter, op->getLoc(), op->getResult(0),
+                                ptrName, ptrName))) {
+    return failure();
+  }
+  return success();
+}
+
 static LogicalResult printOperation(CudaEmitter &emitter, memref::GlobalOp op) {
   if (emitter.inFunction) {
     auto &os = emitter.ostream();
@@ -1580,6 +1734,73 @@ printOperation(CudaEmitter &emitter,
   }
   return success();
 }
+
+static LogicalResult printOperation(CudaEmitter &emitter, gpu::BlockIdOp op) {
+  Operation *operation = op.getOperation();
+  auto &os = emitter.ostream();
+
+  if (failed(emitter.emitAssignPrefix(*operation)))
+    return op->emitOpError("emitAssignPrefix fail");
+  switch (op.getDimension()) {
+  case gpu::Dimension::x:
+    os << "blockIdx.x";
+    break;
+  case gpu::Dimension::y:
+    os << "blockIdx.y";
+    break;
+  case gpu::Dimension::z:
+    os << "blockIdx.z";
+    break;
+  default:
+    return op->emitOpError("Unknown Dimension");
+  }
+  return success();
+}
+
+static LogicalResult printOperation(CudaEmitter &emitter, gpu::BlockDimOp op) {
+  Operation *operation = op.getOperation();
+  auto &os = emitter.ostream();
+
+  if (failed(emitter.emitAssignPrefix(*operation)))
+    return op->emitOpError("emitAssignPrefix fail");
+  switch (op.getDimension()) {
+  case gpu::Dimension::x:
+    os << "blockDim.x";
+    break;
+  case gpu::Dimension::y:
+    os << "blockDim.y";
+    break;
+  case gpu::Dimension::z:
+    os << "blockDim.z";
+    break;
+  default:
+    return op->emitOpError("Unknown Dimension");
+  }
+  return success();
+}
+
+static LogicalResult printOperation(CudaEmitter &emitter, gpu::GridDimOp op) {
+  Operation *operation = op.getOperation();
+  auto &os = emitter.ostream();
+
+  if (failed(emitter.emitAssignPrefix(*operation)))
+    return op->emitOpError("emitAssignPrefix fail");
+  switch (op.getDimension()) {
+  case gpu::Dimension::x:
+    os << "gridDim.x";
+    break;
+  case gpu::Dimension::y:
+    os << "gridDim.y";
+    break;
+  case gpu::Dimension::z:
+    os << "gridDim.z";
+    break;
+  default:
+    return op->emitOpError("Unknown Dimension");
+  }
+  return success();
+}
+
 static LogicalResult printOperation(CudaEmitter &emitter,
                                     LLVM::ConstantOp constantOp) {
   Operation *operation = constantOp.getOperation();
@@ -1691,6 +1912,27 @@ static LogicalResult printOperation(CudaEmitter &emitter, vector::InsertOp op) {
   os << "=" << emitter.getOrCreateName(op->getOperand(0));
   return success();
 }
+
+static LogicalResult printOperation(CudaEmitter &emitter,
+                                    vector::InsertElementOp op) {
+  Operation *operation = op.getOperation();
+  auto &os = emitter.ostream();
+  if (failed(emitter.emitAssignPrefix(*operation))) {
+    return failure();
+  }
+  os << emitter.getOrCreateName(op.getDest()) << ";";
+
+  auto positions = op.getPosition();
+  os << "Get<";
+  emitter.getOrCreateName(positions);
+  os << ">"
+     << "(";
+  os << emitter.getOrCreateName(op.getResult());
+  os << ")";
+  os << "=" << emitter.getOrCreateName(op.getSource());
+  return success();
+}
+
 static LogicalResult printOperation(CudaEmitter &emitter,
                                     vector::ExtractOp op) {
   Operation *operation = op.getOperation();
@@ -2125,25 +2367,28 @@ static LogicalResult printOperation(CudaEmitter &emitter,
 }
 LogicalResult CudaEmitter::emitOperation(Operation &op,
                                          bool trailingSemicolon) {
-  // llvm::errs() << op.getName().getStringRef().str() + "\n";
+  llvm::errs() << op.getName().getStringRef().str() + "\n";
   LogicalResult status =
       llvm::TypeSwitch<Operation *, LogicalResult>(&op)
           // Builtin ops.
-          .Case<ModuleOp>([&](auto op) { return printOperation(*this, op); })
+          .Case<ModuleOp, func::FuncOp>(
+              [&](auto op) { return printOperation(*this, op); })
           .Case<arith::ConstantOp, arith::MulIOp, arith::AddIOp, arith::CmpIOp,
                 arith::SelectOp, arith::DivSIOp, arith::SubIOp, arith::AddFOp,
                 arith::SubFOp, arith::MulFOp, arith::DivFOp, arith::MaxNumFOp,
                 arith::MinNumFOp, arith::CmpFOp, arith::OrIOp, arith::XOrIOp,
                 arith::AndIOp, arith::IndexCastUIOp, arith::BitcastOp,
                 arith::IndexCastOp, arith::ShLIOp, arith::FPToSIOp,
-                arith::SIToFPOp, arith::ShRUIOp>(
+                arith::SIToFPOp, arith::ShRUIOp, arith::MinSIOp, arith::MaxSIOp,
+                arith::RemSIOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<math::FloorOp, math::FmaOp, math::RsqrtOp, math::AbsFOp>(
               [&](auto op) { return printOperation(*this, op); })
-          .Case<gpu::ThreadIdOp, gpu::BarrierOp>(
+          .Case<gpu::ThreadIdOp, gpu::BarrierOp, gpu::BlockIdOp,
+                gpu::BlockDimOp, gpu::GridDimOp>(
               [&](auto op) { return printOperation(*this, op); })
-          .Case<memref::AllocOp, memref::LoadOp, memref::StoreOp,
-                memref::GlobalOp, memref::GetGlobalOp,
+          .Case<memref::AllocOp, memref::AllocaOp, memref::LoadOp,
+                memref::StoreOp, memref::GlobalOp, memref::GetGlobalOp,
                 memref::AssumeAlignmentOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<iree_compiler::IREE::HAL::InterfaceWorkgroupIDOp>(
@@ -2151,17 +2396,17 @@ LogicalResult CudaEmitter::emitOperation(Operation &op,
           .Case<LLVM::ConstantOp, LLVM::UndefOp, LLVM::InsertValueOp,
                 LLVM::LLVMFuncOp, LLVM::ReturnOp, LLVM::MulOp, LLVM::UDivOp>(
               [&](auto op) { return printOperation(*this, op); })
-          .Case<vector::LoadOp, vector::InsertOp, vector::ExtractOp,
-                vector::SplatOp, vector::FMAOp, vector::StoreOp,
-                vector::BroadcastOp, vector::GatherOp, vector::ShuffleOp,
-                vector::ReductionOp>(
+          .Case<vector::LoadOp, vector::InsertOp, vector::InsertElementOp,
+                vector::ExtractOp, vector::SplatOp, vector::FMAOp,
+                vector::StoreOp, vector::BroadcastOp, vector::GatherOp,
+                vector::ShuffleOp, vector::ReductionOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<scf::ForOp, scf::YieldOp, scf::IfOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<UnrealizedConversionCastOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
-            std::string s = "unable to find printer for op";
+            std::string s = "unable to find printer for op ";
             s += op.getName().getStringRef().str();
             return op.emitOpError(s);
           });

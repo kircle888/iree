@@ -4,12 +4,12 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/memory_pools.h"
+#include "iree/hal/drivers/corex/memory_pools.h"
 
-#include "iree/hal/drivers/cuda/cuda_buffer.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/cuda_status_util.h"
-
+#include "iree/hal/drivers/corex/cuda_buffer.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_status_util.h"
+#if 0
 // NOTE: these are currently global for all devices; we could make
 // device-specific ones by malloc() and leaking (with LSAN note) unique string
 // values instead.
@@ -313,3 +313,5 @@ iree_status_t iree_hal_cuda_memory_pools_dealloca(
   IREE_TRACE_ZONE_END(z0);
   return status;
 }
+
+#endif

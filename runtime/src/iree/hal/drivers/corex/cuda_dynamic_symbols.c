@@ -4,13 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
 
 #include <string.h>
 
 #include "iree/base/api.h"
 #include "iree/base/internal/dynamic_library.h"
-#include "iree/hal/drivers/cuda/cuda_status_util.h"
+#include "iree/hal/drivers/corex/cuda_status_util.h"
 
 static const char* iree_hal_cuda_dylib_names[] = {
 #if defined(IREE_PLATFORM_WINDOWS)
@@ -31,19 +31,45 @@ static iree_status_t iree_hal_cuda_dynamic_symbols_resolve_all(
   // through cuGetProcAddress. cuGetProcAddress_v2 is added in CUDA 12.0 and has
   // a new function signature. If IREE_CUDA_DRIVER_API_VERSION is increased to
   // >=12.0, then make sure we are using the correct signature.
-  IREE_RETURN_IF_ERROR(iree_dynamic_library_lookup_symbol(
-      syms->dylib, "cuGetProcAddress", (void**)&syms->cuGetProcAddress));
-#define IREE_CU_PFN_DECL(cuda_symbol_name, ...)                         \
-  {                                                                     \
-    static const char* name = #cuda_symbol_name;                        \
-    IREE_CUDA_RETURN_IF_ERROR(                                          \
-        syms,                                                           \
-        cuGetProcAddress(name, (void**)&syms->cuda_symbol_name,         \
-                         IREE_CUDA_DRIVER_API_VERSION,                  \
-                         CU_GET_PROC_ADDRESS_DEFAULT),                  \
-        "when resolving " #cuda_symbol_name " using cuGetProcAddress"); \
+//   IREE_RETURN_IF_ERROR(iree_dynamic_library_lookup_symbol(
+//       syms->dylib, "cuGetProcAddress", (void**)&syms->cuGetProcAddress));
+// #define IREE_CU_PFN_DECL(cuda_symbol_name, ...)                         \
+//   {                                                                     \
+//     static const char* name = #cuda_symbol_name;                        \
+//     IREE_CUDA_RETURN_IF_ERROR(                                          \
+//         syms,                                                           \
+//         cuGetProcAddress(name, (void**)&syms->cuda_symbol_name,         \
+//                          IREE_CUDA_DRIVER_API_VERSION,                  \
+//                          CU_GET_PROC_ADDRESS_DEFAULT),                  \
+//         "when resolving " #cuda_symbol_name " using cuGetProcAddress"); \
+//   }
+#define IREE_CU_PFN_DECL(cudaSymbolName, ...)                    \
+  {                                                              \
+    static const char* kName = #cudaSymbolName;                  \
+    const int symbolNameSize = sizeof(#cudaSymbolName) - 1;      \
+    char* nkName = (char*)malloc(symbolNameSize + 10);           \
+    memcpy(nkName, kName, symbolNameSize + 1);                   \
+    iree_status_t status = iree_dynamic_library_lookup_symbol(   \
+        syms->dylib, nkName, (void**)&syms->cudaSymbolName);     \
+    if (iree_status_is_not_found(status)) {                      \
+      nkName[symbolNameSize] = '_';                              \
+      nkName[symbolNameSize + 1] = 'v';                          \
+      nkName[symbolNameSize + 2] = '2';                          \
+      nkName[symbolNameSize + 3] = '\0';                         \
+      status = iree_dynamic_library_lookup_symbol(               \
+          syms->dylib, nkName, (void**)&syms->cudaSymbolName);   \
+      if (iree_status_is_not_found(status)) {                    \
+        nkName[symbolNameSize + 2] = '3';                        \
+        status = iree_dynamic_library_lookup_symbol(             \
+            syms->dylib, nkName, (void**)&syms->cudaSymbolName); \
+        free(nkName);                                            \
+        IREE_RETURN_IF_ERROR(status);                            \
+      } else {                                                   \
+        free(nkName);                                            \
+      }                                                          \
+    }                                                            \
   }
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbol_table.h"  // IWYU pragma: keep
+#include "iree/hal/drivers/corex/cuda_dynamic_symbol_table.h"  // IWYU pragma: keep
 #undef IREE_CU_PFN_DECL
   return iree_ok_status();
 }

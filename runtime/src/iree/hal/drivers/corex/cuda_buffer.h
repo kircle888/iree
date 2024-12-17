@@ -9,7 +9,7 @@
 
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
-#include "iree/hal/drivers/cuda/cuda_headers.h"
+#include "iree/hal/drivers/corex/cuda_headers.h"
 
 #ifdef __cplusplus
 extern "C" {

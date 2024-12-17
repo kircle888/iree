@@ -4,14 +4,14 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/cuda_allocator.h"
+#include "iree/hal/drivers/corex/cuda_allocator.h"
 
 #include <stddef.h>
 
 #include "iree/base/api.h"
-#include "iree/hal/drivers/cuda/cuda_buffer.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/cuda_status_util.h"
+#include "iree/hal/drivers/corex/cuda_buffer.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/cuda_status_util.h"
 
 #if IREE_TRACING_FEATURES & IREE_TRACING_FEATURE_ALLOCATION_TRACKING
 static const char* IREE_HAL_CUDA_ALLOCATOR_ID = "CUDA unpooled";
@@ -156,10 +156,10 @@ static void iree_hal_cuda_allocator_query_statistics(
     iree_hal_cuda_allocator_t* allocator =
         iree_hal_cuda_allocator_cast(base_allocator);
     memcpy(out_statistics, &allocator->statistics, sizeof(*out_statistics));
-    if (allocator->pools) {
-      iree_hal_cuda_memory_pools_merge_statistics(allocator->pools,
-                                                  out_statistics);
-    }
+    // if (allocator->pools) {
+    //   iree_hal_cuda_memory_pools_merge_statistics(allocator->pools,
+    //                                               out_statistics);
+    // }
   });
 }
 

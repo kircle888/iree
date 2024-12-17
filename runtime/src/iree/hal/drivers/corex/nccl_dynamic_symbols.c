@@ -4,13 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/nccl_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/nccl_dynamic_symbols.h"
 
 #include <string.h>
 
 #include "iree/base/api.h"
 #include "iree/base/internal/dynamic_library.h"
-#include "iree/hal/drivers/cuda/nccl_status_util.h"
+#include "iree/hal/drivers/corex/nccl_status_util.h"
 
 static const char* iree_hal_cuda_nccl_dylib_names[] = {
 #if defined(IREE_PLATFORM_WINDOWS)
@@ -36,7 +36,7 @@ static iree_status_t iree_hal_cuda_nccl_dynamic_symbols_resolve_all(
     IREE_RETURN_IF_ERROR(iree_dynamic_library_lookup_symbol(  \
         syms->dylib, name, (void**)&syms->nccl_symbol_name)); \
   }
-#include "iree/hal/drivers/cuda/nccl_dynamic_symbol_table.h"  // IWYU pragma: keep
+#include "iree/hal/drivers/corex/nccl_dynamic_symbol_table.h"  // IWYU pragma: keep
 #undef IREE_NCCL_PFN_DECL
 #undef IREE_NCCL_PFN_DECL_STR_RETURN
   return iree_ok_status();

@@ -9,7 +9,7 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/event_pool.h"
-#include "iree/hal/drivers/cuda/event_pool.h"
+#include "iree/hal/drivers/corex/event_pool.h"
 #include "iree/hal/utils/semaphore_base.h"
 
 #ifdef __cplusplus

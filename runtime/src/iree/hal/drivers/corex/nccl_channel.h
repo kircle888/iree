@@ -9,9 +9,9 @@
 
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
-#include "iree/hal/drivers/cuda/api.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/nccl_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/api.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/nccl_dynamic_symbols.h"
 #include "iree/hal/utils/collective_batch.h"
 #include "iree/hal/utils/stream_tracing.h"
 

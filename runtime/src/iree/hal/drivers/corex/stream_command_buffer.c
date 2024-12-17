@@ -4,12 +4,12 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/cuda/stream_command_buffer.h"
+#include "iree/hal/drivers/corex/stream_command_buffer.h"
 
-#include "iree/hal/drivers/cuda/cuda_buffer.h"
-#include "iree/hal/drivers/cuda/cuda_status_util.h"
-#include "iree/hal/drivers/cuda/native_executable.h"
-#include "iree/hal/drivers/cuda/nccl_channel.h"
+#include "iree/hal/drivers/corex/cuda_buffer.h"
+#include "iree/hal/drivers/corex/cuda_status_util.h"
+#include "iree/hal/drivers/corex/native_executable.h"
+#include "iree/hal/drivers/corex/nccl_channel.h"
 #include "iree/hal/utils/collective_batch.h"
 #include "iree/hal/utils/resource_set.h"
 

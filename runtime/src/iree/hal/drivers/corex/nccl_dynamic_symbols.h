@@ -9,8 +9,8 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/dynamic_library.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/nccl_headers.h"
+#include "iree/hal/drivers/corex/cuda_dynamic_symbols.h"
+#include "iree/hal/drivers/corex/nccl_headers.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,7 +31,7 @@ typedef struct iree_hal_cuda_nccl_dynamic_symbols_t {
   ncclResult_t (*ncclSymbolName)(__VA_ARGS__);
 #define IREE_NCCL_PFN_DECL_STR_RETURN(ncclSymbolName, ...) \
   const char* (*ncclSymbolName)(__VA_ARGS__);
-#include "iree/hal/drivers/cuda/nccl_dynamic_symbol_table.h"  // IWYU pragma: export
+#include "iree/hal/drivers/corex/nccl_dynamic_symbol_table.h"  // IWYU pragma: export
 #undef IREE_NCCL_PFN_DECL
 #undef IREE_NCCL_PFN_DECL_STR_RETURN
 } iree_hal_cuda_nccl_dynamic_symbols_t;

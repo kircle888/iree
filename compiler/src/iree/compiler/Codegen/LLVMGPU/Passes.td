@@ -27,6 +27,12 @@ def ConvertToROCDLPass :
     "and ROCDL dialects";
 }
 
+def ConvertToCOREX :
+    Pass<"iree-convert-to-corex", "ModuleOp"> {
+  let summary = "Perform conversion from builtin/GPU/HAL/Arith/Vector dialect to COREX";
+  let constructor = "mlir::iree_compiler::createConvertToCOREXPass()";
+}
+
 def ExtractAddressComputationGPUPass: Pass<"extract-address-computation-gpu"> {
   let summary = "Extract address computations from memory accesses";
   let description = [{
